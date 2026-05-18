@@ -1,16 +1,16 @@
 #include "pcg32.h"
 
-#define PI 3.14159265358979323846f
-#define PCG32_INV_24BIT 5.9604644775390625e-8f
+#define PI 3.14159265358979323846F
+#define PCG32_INV_24BIT 5.9604644775390625E-8F
 
 static pcg32_state s_pcg32_state = {
-    .state = 0x853c49e6748fea9bULL,
-    .inc = 0xda3e39cb94b95bdbULL
+    .state = 0X853C49E6748FEA9BULL,
+    .inc = 0XDA3E39CB94B95BDBULL
 };
 
 void pcg32_set_seed_r(pcg32_state* state, uint64_t init_state, uint64_t init_seq) {
     state->state = 0U;
-    state->inc = (init_seq << 1u) | 1u;
+    state->inc = (init_seq << 1U) | 1U;
     pcg32_random_r(state);
 
     state->state += init_state;
@@ -27,8 +27,8 @@ uint32_t pcg32_random_r(pcg32_state* state) {
     uint64_t prev_state = state->state;
     state->state = prev_state * 6364136223846793005ULL + state->inc;
 
-    uint32_t xorshifted = (uint32_t)(((prev_state >> 18u) ^ prev_state) >> 27u);
-    uint32_t rot = (uint32_t)(prev_state >> 59u);
+    uint32_t xorshifted = (uint32_t)(((prev_state >> 18U) ^ prev_state) >> 27U);
+    uint32_t rot = (uint32_t)(prev_state >> 59U);
 
     uint32_t result = (xorshifted >> rot) | (xorshifted << ((-rot) & 31)); //NOSONAR
 
@@ -55,18 +55,18 @@ float pcg32_gaussian_r(pcg32_state* state) {
         return result;
     }
 
-    float u1 = 0.0f;
+    float u1 = 0.0F;
 
     do {
         u1 = pcg32_randomf_r(state);
-    } while ( u1 == 0.0f);
+    } while ( u1 == 0.0F);
     
     float u2 = pcg32_randomf_r(state);
 
-    float mag = sqrtf(-2.0f * logf(u1));
+    float mag = sqrtf(-2.0F * logf(u1));
 
-    float z0 = mag * cosf(2.0f * PI * u2);
-    float z1 = mag * sinf(2.0f * PI * u2);
+    float z0 = mag * cosf(2.0F * PI * u2);
+    float z1 = mag * sinf(2.0F * PI * u2);
 
     state->prev_norm = z1;
 

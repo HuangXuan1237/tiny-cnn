@@ -2,24 +2,26 @@
 
 <p align="center">
     一个用 C 语言实现的轻量级、卷积神经网络框架（支持自动求导、自定义高效堆栈内存管理与计算图）。
-    <br />
-    <a href="https://github.com/your_username/tiny-cnn"><strong>探索本项目的文档 »</strong></a>
-    <br />
   </p>
 </p>
 
 ## 目录
 
+- [致谢](#致谢)
 - [上手指南](#上手指南)
   - [开发前的准备](#开发前的准备)
-  - [安装步骤](#安装步骤)
+  - [获取数据集](#安装步骤)
 - [文件结构](#文件结构)
 - [使用示例](#使用示例)
 - [路线图](#路线图)
 - [许可证](#许可证)
-- [致谢](#致谢)
 
 ---
+
+## 致谢
+
+* 本项目的开发受到了 **Magicalbat** 的精彩视频 [《coding a machine learning library in c from scratch》](https://www.youtube.com/watch?v=hL_n_GljC0I)的深度启发。非常感谢 **Magicalbat** 分享的优雅架构思路，特别是关于视频中探讨的高效 Arena（堆栈式）内存分配管理策略。
+* 本项目中的 `pcg32` 随机数生成器实现基于 GitHub 上的开源项目 [PCG-C (pcg-random)](https://github.com/imneme/pcg-c)，为其高效且统计学优异的伪随机性能表示感谢。
 
 ## 上手指南
 
@@ -41,39 +43,31 @@ sudo apt-get update
 sudo apt-get install build-essential cmake libopenblas-dev libomp-dev
 ```
 
-### 安装步骤
+### 获取数据集
 
-1. 克隆本仓库：
-   **Bash**
+本项目支持经典视觉数据集。请确保在训练前已下载并格式化好对应的数据集。
 
-   ```
-   git clone [https://github.com/your_username/tiny-cnn.git](https://github.com/your_username/tiny-cnn.git)
-   cd tiny-cnn
-   ```
-2. 放置数据集：
-   请确保您已准备好格式化的 CIFAR-10 图像集，并存放在项目根目录外的相应路径（如 `../data/cifar10/`），或者根据您的本地需求修改 `main.c` 中的数据集读取路径。
-3. 构建并编译：
-   **Bash**
+1. 生成数据集：
+   以 **CIFAR-10** 为例，项目内已为您提供了现成的数据获取与转换脚本。您只需在项目根目录下执行以下命令，脚本会自动下载并将其转化为本项目专用的二进制格式：
 
    ```
-   mkdir build && cd build
-   cmake ..
-   make -j$(nproc)
+   python ./data/cifar10/cifar10.py
    ```
-4. 运行可执行程序：
-   **Bash**
+2. 自定义或扩展其他数据集
 
-   ```
-   ./bin/tiny-cnn
-   ```
+   如果您希望获取并处理其他数据集，该 Python 脚本内同样集成了 **MNIST** 和 **Fashion-MNIST** 的处理逻辑。您可以将该脚本作为 **模板** 。如果您需要引入全新的自定义数据集，可以参考脚本中相关函数的实现结构：
 
 ---
 
 ## 文件结构
 
 ```
-tiny-cnn/
+tiny-cnn
 ├── CMakeLists.txt
+├── data/
+│   ├── cifar10/
+│   ├── fashion-mnist/
+│   └── mnist/
 ├── include/
 │   ├── main.h
 │   ├── nn.h
@@ -134,7 +128,7 @@ void cifar10_custom_resnet(stack *stk, nn_model *model) {
 
 ## 路线图
 
-* [X] 基于纯 C 语言的自动求导与计算图系统
+* [X] 基于 C 语言的自动求导与计算图系统
 * [X] 高效对齐的自定义内存池（Stack Allocation）
 * [X] 支持余弦退火、EMA 及标签平滑
 * [ ] 支持 GPU / CUDA 算子硬件加速
@@ -145,13 +139,4 @@ void cifar10_custom_resnet(stack *stk, nn_model *model) {
 
 ## 许可证
 
-本项目基于 **MIT License** 许可证开源。请查阅 `LICENSE` 文件了解更多详情。
-
----
-
-## 致谢
-
-* [OpenBLAS团队](https://www.openblas.net/)
-* [OpenMP规范委员会](https://www.openmp.org/)
-* [stb 单文件开源库系列](https://github.com/nothings/stb)
-* [Best-README-Template 提供者](https://github.com/shaojintian/Best_README_template)
+本项目基于 **MIT License** 许可证开源。请查阅 [LICENSE](LICENSE) 文件了解更多详情。
