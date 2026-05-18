@@ -7,5 +7,8 @@ bin/
 .cache/
 .vscode/
 
-data/
+data/cifar10/test
+data/cifar10/train
+data/fashion-mnist/train
+data/mnist/train
 backup/
