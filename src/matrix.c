@@ -157,7 +157,7 @@ bool mat_batchnorm2d( //NOSONAR
     float ns = (float)(batch_size * spatial);
 
     if (is_training) {
-        // 使用项目的内存池（stack）替代 __builtin_alloca，保证多线程下的栈安全
+        // 使用项目的内存池（stack）替代 _builtin_alloca，保证多线程下的栈安全
         stack_marker scratch = stack_get_marker(NULL, 0);
         float *mean = (float*)stack_alloc(scratch.stk, channels * sizeof(float), 1);
         float *var = (float*)stack_alloc(scratch.stk, channels * sizeof(float), 1);
@@ -266,7 +266,7 @@ bool mat_grad_batchnorm2d( //NOSONAR
     size_t batch_size = input->rows;
     float ns = (float)(batch_size * spatial);
 
-    // 使用项目的内存池（stack）替代 __builtin_alloca
+    // 使用项目的内存池（stack）替代 _builtin_alloca
     stack_marker scratch = stack_get_marker(NULL, 0);
     float *sum_dy = (float*)stack_alloc(scratch.stk, channels * sizeof(float), 1);
     float *sum_dy_x_hat = (float*)stack_alloc(scratch.stk, channels * sizeof(float), 1);
@@ -321,13 +321,12 @@ bool mat_grad_batchnorm2d( //NOSONAR
         }
     }
 
-    // 释放临时内存，回滚状态
     stack_drop_marker(scratch);
 
     return 1;
 }
 
-static void __matrix_img2col( //NOSONAR
+static void _matrix_img2col( //NOSONAR
     matrix *result, const matrix *input,
     size_t in_c, size_t in_h, size_t in_w, size_t k_size,
     size_t stride, size_t padding
@@ -338,7 +337,6 @@ static void __matrix_img2col( //NOSONAR
 
     memset(result->data, 0, sizeof(float) * result->rows * result->cols);
 
-    #pragma omp parallel for collapse(3)
     for (size_t c = 0; c < in_c; ++c) {
         for (size_t ky = 0; ky < k_size; ++ky) {
             for (size_t kx = 0; kx < k_size; ++kx) {
@@ -378,23 +376,25 @@ bool mat_conv2d( //NOSONAR
         return 0;
     }
 
-    stack_marker scratch = stack_get_marker(NULL, 0);
-    
-    matrix *col_mat = mat_create(scratch.stk, in_c * k_size * k_size, out_h * out_w);
-    matrix *temp = mat_create(scratch.stk, out_c, out_h * out_w);
-
     size_t in_stride = in_c * in_h * in_w;
     size_t out_stride = out_c * out_h * out_w;
 
+    #pragma omp parallel for
     for (size_t b = 0; b < batch_size; b++) {
+        stack_marker scratch = stack_get_marker(NULL, 0);
+        
+        matrix *col_mat = mat_create(scratch.stk, in_c * k_size * k_size, out_h * out_w);
+        matrix *temp = mat_create(scratch.stk, out_c, out_h * out_w);
+
         matrix input_view = {
             .rows = 1, 
             .cols = in_stride, 
             .data = input->data + b * in_stride
         };
 
-        __matrix_img2col(
-            col_mat, &input_view, in_c, in_h, in_w, k_size, stride, padding
+        _matrix_img2col(
+            col_mat, &input_view,
+            in_c, in_h, in_w, k_size, stride, padding
         );
 
         matrix kernel_view = {
@@ -406,36 +406,40 @@ bool mat_conv2d( //NOSONAR
         mat_mul(temp, &kernel_view, col_mat, 0.0f, 0, 0);
 
         memcpy(result->data + b * out_stride, temp->data, sizeof(float) * out_stride);
-    }
 
-    stack_drop_marker(scratch);
+        stack_drop_marker(scratch);
+    }
 
     return 1;
 }
 
-static void __matrix_col2img( //NOSONAR
+static void _matrix_col2img( //NOSONAR
     matrix *result, const matrix *col_mat,
     size_t in_c, size_t in_h, size_t in_w,
     size_t k_size, size_t stride, size_t padding
 ) {
     size_t out_h = (in_h + 2 * padding - k_size) / stride + 1;
     size_t out_w = (in_w + 2 * padding - k_size) / stride + 1;
+    size_t out_hw = out_h * out_w;
 
-    for (size_t c = 0; c < in_c; c++) {
-        for (size_t ky = 0; ky < k_size; ky++) {
-            for (size_t kx = 0; kx < k_size; kx++) {
-                size_t col_row = c * k_size * k_size + ky * k_size + kx;
-                for (size_t y = 0; y < out_h; y++) { //NOSONAR
-                    for (size_t x = 0; x < out_w; x++) {
-                        int iy = (int)(y * stride + ky - padding);
+    memset(result->data, 0, sizeof(float) * result->rows * result->cols);
+
+    for (size_t c = 0; c < in_c; ++c) {
+        for (size_t ky = 0; ky < k_size; ++ky) {
+            for (size_t kx = 0; kx < k_size; ++kx) {
+                size_t row_idx = (c * k_size * k_size + ky * k_size + kx) * out_hw;
+                
+                for (size_t y = 0; y < out_h; ++y) { // NOSONAR
+                    int iy = (int)(y * stride + ky - padding);
+                    if (iy < 0 || iy >= (int)in_h) continue;
+
+                    float *out_ptr = &result->data[c * in_h * in_w + iy * in_w];
+                    const float *col_ptr = &col_mat->data[row_idx + y * out_w];
+
+                    for (size_t x = 0; x < out_w; ++x) {
                         int ix = (int)(x * stride + kx - padding);
-                        
-                        if (iy >= 0 && iy < (int)in_h && ix >= 0 && ix < (int)in_w) {
-                            result->data[
-                                c * in_h * in_w + iy * in_w + ix
-                            ] += col_mat->data[
-                                col_row * (out_h * out_w) + (y * out_w + x)
-                            ];
+                        if (ix >= 0 && ix < (int)in_w) {
+                            out_ptr[ix] += col_ptr[x];
                         }
                     }
                 }
@@ -450,58 +454,78 @@ bool mat_grad_conv2d( //NOSONAR
     size_t in_c, size_t in_h, size_t in_w,
     size_t k_size, size_t stride, size_t padding
 ) {
+    size_t batch_size = input->rows;
     size_t out_h = (in_h + 2 * padding - k_size) / stride + 1;
     size_t out_w = (in_w + 2 * padding - k_size) / stride + 1;
-    size_t single_filter_elements = in_c * k_size * k_size;
-    size_t out_c = kernel->rows * kernel->cols / single_filter_elements;
-    size_t batch_size = input->rows;
+    size_t out_c = kernel->rows * kernel->cols / (in_c * k_size * k_size);
 
-    stack_marker scratch = stack_get_marker(NULL, 0);
-    matrix *col_mat = mat_create(scratch.stk, single_filter_elements, out_h * out_w);
-    matrix *d_col = mat_create(scratch.stk, single_filter_elements, out_h * out_w);
+    size_t in_stride = in_c * in_h * in_w;
+    size_t out_stride = out_c * out_h * out_w;
+    size_t k_cols = in_c * k_size * k_size;
 
-    matrix k_reshaped = { .rows = out_c, .cols = single_filter_elements, .data = kernel->data };
-    matrix kg_reshaped;
     if (kernel_grad) {
-        kg_reshaped.rows = out_c;
-        kg_reshaped.cols = single_filter_elements;
-        kg_reshaped.data = kernel_grad->data;
+        mat_fill(kernel_grad, 0.0f);
     }
 
-    for (size_t b = 0; b < batch_size; b++) {
-        matrix input_view = {
-            .rows = 1, .cols = in_c * in_h * in_w,
-            .data = input->data + b * in_c * in_h * in_w
-        };
-        matrix grad_view = {
-            .rows = 1, .cols = out_c * out_h * out_w,
-            .data = grad->data + b * out_c * out_h * out_w
-        };
-        matrix g_reshaped = {
-            .rows = out_c, .cols = out_h * out_w, .data = grad_view.data
-        };
+    #pragma omp parallel
+    {
+        stack_marker scratch = stack_get_marker(NULL, 0);
 
-        __matrix_img2col(col_mat, &input_view, in_c, in_h, in_w, k_size, stride, padding);
-
+        matrix *local_grad_kernel = NULL;
         if (kernel_grad) {
-            mat_mul(&kg_reshaped, &g_reshaped, col_mat, 1.0f, 0, 1);
+            local_grad_kernel = mat_create(scratch.stk, out_c, k_cols);
         }
 
-        if (input_grad) {
-            mat_mul(d_col, &k_reshaped, &g_reshaped, 0.0f, 1, 0);
+        matrix *col_mat = mat_create(scratch.stk, k_cols, out_h * out_w);
+        matrix *grad_col = mat_create(scratch.stk, k_cols, out_h * out_w);
 
-            matrix img_view = {
-                .rows = 1, .cols = in_c * in_h * in_w,
-                .data = input_grad->data + b * in_c * in_h * in_w
+        #pragma omp for nowait
+        for (size_t b = 0; b < batch_size; b++) {
+            matrix input_view = {
+                .rows = 1,
+                .cols = in_stride,
+                .data = input->data + b * in_stride
             };
 
-            __matrix_col2img(
-                &img_view, d_col, in_c, in_h, in_w, k_size, stride, padding
-            );
+            matrix grad_out_view = {
+                .rows = out_c,
+                .cols = out_h * out_w,
+                .data = grad->data + b * out_stride
+            };
+
+            _matrix_img2col(col_mat, &input_view, in_c, in_h, in_w, k_size, stride, padding);
+
+            if (local_grad_kernel) {
+                mat_mul(local_grad_kernel, &grad_out_view, col_mat, 1.0f, 0, 1);
+            }
+
+            if (input_grad) {
+                matrix kernel_view = {
+                    .rows = out_c,
+                    .cols = k_cols,
+                    .data = kernel->data
+                };
+
+                mat_mul(grad_col, &kernel_view, &grad_out_view, 0.0f, 1, 0);
+
+                matrix grad_in_view = {
+                    .rows = 1,
+                    .cols = in_stride,
+                    .data = input_grad->data + b * in_stride
+                };
+                _matrix_col2img(&grad_in_view, grad_col, in_c, in_h, in_w, k_size, stride, padding);
+            }
         }
+
+        if (kernel_grad && local_grad_kernel) {
+            for (size_t i = 0; i < out_c * k_cols; i++) {
+                #pragma omp atomic
+                kernel_grad->data[i] += local_grad_kernel->data[i];
+            }
+        }
+
+        stack_drop_marker(scratch);
     }
-    
-    stack_drop_marker(scratch);
 
     return 1;
 }

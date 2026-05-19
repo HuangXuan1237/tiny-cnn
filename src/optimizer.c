@@ -6,7 +6,7 @@ void opt_zero_grad(const nn_model *model) {
     for (size_t i = 0; i < model->backward_graph.tensor_count; i++) {
         nn_tensor *t = model->backward_graph.tensors[i];
         if (t->grad) {
-            mat_fill(t->grad, 0.0f);
+            mat_fill(t->grad, 0.0F);
         }
     }
 }
@@ -16,11 +16,11 @@ adam_optimizer *adam_create(stack *stk, const nn_model *model, float lr, float w
 
     opt->stk = stk;
     opt->lr = lr;
-    opt->beta1 = 0.9f;
-    opt->beta2 = 0.999f;
-    opt->epsilon = 1e-8f;
+    opt->beta1 = 0.9F;
+    opt->beta2 = 0.999F;
+    opt->epsilon = 1E-8F;
     opt->weight_decay = weight_decay;
-    opt->t = 0.0f;
+    opt->t = 0.0F;
 
     size_t count = model->backward_graph.tensor_count;
     opt->m = (matrix**)stack_alloc(opt->stk, sizeof(matrix*) * count, 1);
@@ -39,12 +39,12 @@ adam_optimizer *adam_create(stack *stk, const nn_model *model, float lr, float w
 }
 
 void adam_step(adam_optimizer *opt, const nn_model *model, size_t batch_size) {
-    opt->t += 1.0f;
+    opt->t += 1.0F;
     float beta1_t = powf(opt->beta1, opt->t);
     float beta2_t = powf(opt->beta2, opt->t);
     
-    float bias_corr1 = 1.0f - beta1_t;
-    float bias_corr2 = 1.0f - beta2_t;
+    float bias_corr1 = 1.0F - beta1_t;
+    float bias_corr2 = 1.0F - beta2_t;
 
     for (size_t i = 0; i < model->backward_graph.tensor_count; i++) {
         nn_tensor *curr = model->backward_graph.tensors[i];
@@ -61,8 +61,8 @@ void adam_step(adam_optimizer *opt, const nn_model *model, size_t batch_size) {
         for (size_t k = 0; k < size; k++) {
             float g = grad[k] / (float)batch_size;
 
-            m[k] = opt->beta1 * m[k] + (1.0f - opt->beta1) * g;
-            v[k] = opt->beta2 * v[k] + (1.0f - opt->beta2) * g * g;
+            m[k] = opt->beta1 * m[k] + (1.0F - opt->beta1) * g;
+            v[k] = opt->beta2 * v[k] + (1.0F - opt->beta2) * g * g;
 
             float m_hat = m[k] / bias_corr1;
             float v_hat = v[k] / bias_corr2;
@@ -74,8 +74,8 @@ void adam_step(adam_optimizer *opt, const nn_model *model, size_t batch_size) {
 }
 
 void adamw_step(adam_optimizer *opt, const nn_model *model) {
-    opt->t += 1.0f;
-    float lr_t = opt->lr * sqrtf(1.0f - powf(opt->beta2, opt->t)) / (1.0f - powf(opt->beta1, opt->t));
+    opt->t += 1.0F;
+    float lr_t = opt->lr * sqrtf(1.0F - powf(opt->beta2, opt->t)) / (1.0F - powf(opt->beta1, opt->t));
 
     #pragma omp parallel for
     for (size_t i = 0; i < model->backward_graph.tensor_count; i++) {
@@ -94,8 +94,8 @@ void adamw_step(adam_optimizer *opt, const nn_model *model) {
         for (size_t j = 0; j < size; j++) {
             w[j] -= opt->lr * opt->weight_decay * w[j];
 
-            m[j] = opt->beta1 * m[j] + (1.0f - opt->beta1) * g[j];
-            v[j] = opt->beta2 * v[j] + (1.0f - opt->beta2) * g[j] * g[j];
+            m[j] = opt->beta1 * m[j] + (1.0F - opt->beta1) * g[j];
+            v[j] = opt->beta2 * v[j] + (1.0F - opt->beta2) * g[j] * g[j];
 
             w[j] -= lr_t * m[j] / (sqrtf(v[j]) + opt->epsilon);
         }
@@ -108,7 +108,7 @@ sgd_optimizer *sgd_create(stack *stk, const nn_model *model, float lr, float mom
     opt->lr = lr;
     opt->momentum = momentum;
     opt->weight_decay = weight_decay;
-    opt->dampening = 0.0f;
+    opt->dampening = 0.0F;
     opt->nesterov = nesterov;
 
     size_t count = model->backward_graph.tensor_count;
@@ -139,12 +139,12 @@ void sgd_step(const sgd_optimizer *opt, const nn_model *model, size_t batch_size
         for (size_t k = 0; k < size; k++) {
             float g = grad[k] / (float)batch_size;
 
-            if (opt->weight_decay != 0.0f) {
+            if (opt->weight_decay != 0.0F) {
                 g += opt->weight_decay * param[k];
             }
 
-            if (opt->momentum != 0.0f) {
-                buf[k] = opt->momentum * buf[k] + (1.0f - opt->dampening) * g; //NOSONAR
+            if (opt->momentum != 0.0F) {
+                buf[k] = opt->momentum * buf[k] + (1.0F - opt->dampening) * g; //NOSONAR
 
                 if (opt->nesterov) { //NOSONAR
                     param[k] -= opt->lr * (g + opt->momentum * buf[k]);
@@ -208,8 +208,8 @@ matrix **ema_create_backup_space(stack *stk, const nn_model *model) {
 void ema_update(ema_optimizer *ema, const nn_model *model) {
     ema->step++;
     
-    float current_decay = fminf(ema->decay, (1.0f + (float)ema->step) / (10.0f + (float)ema->step));
-    float one_minus_d = 1.0f - current_decay;
+    float current_decay = fminf(ema->decay, (1.0F + (float)ema->step) / (10.0F + (float)ema->step));
+    float one_minus_d = 1.0F - current_decay;
 
     #pragma omp parallel for
     for (size_t i = 0; i < ema->tensor_count; i++) {
@@ -269,7 +269,7 @@ void _adam_coslr_step(coslr_scheduler *scheduler, adam_optimizer *opt) {
         lr = scheduler->min_lr;
     } else {
         float cos_arg = (float)(PI * (float)scheduler->current_step / (float)scheduler->T_max);
-        lr = scheduler->min_lr + 0.5f * (scheduler->initial_lr - scheduler->min_lr) * (1.0f + cosf(cos_arg));
+        lr = scheduler->min_lr + 0.5F * (scheduler->initial_lr - scheduler->min_lr) * (1.0F + cosf(cos_arg));
     }
 
     opt->lr = lr;
@@ -284,7 +284,7 @@ void _sgd_coslr_step(coslr_scheduler *scheduler, sgd_optimizer *opt) {
         lr = scheduler->min_lr;
     } else {
         float cos_arg = (float)(PI * (float)scheduler->current_step / (float)scheduler->T_max);
-        lr = scheduler->min_lr + 0.5f * (scheduler->initial_lr - scheduler->min_lr) * (1.0f + cosf(cos_arg));
+        lr = scheduler->min_lr + 0.5F * (scheduler->initial_lr - scheduler->min_lr) * (1.0F + cosf(cos_arg));
     }
 
     opt->lr = lr;

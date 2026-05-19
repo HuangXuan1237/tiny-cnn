@@ -1,8 +1,9 @@
 #pragma once
 
+#include <obstack.h> 
+#include <pthread.h>
 #include <stddef.h>
 #include <stdbool.h>
-#include <obstack.h> 
 
 typedef struct obstack stack;
 
@@ -18,3 +19,4 @@ void stack_rollback(stack *stk, size_t pos);
 
 stack_marker stack_get_marker(stack **conflicts, size_t num_conflicts);
 void stack_drop_marker(stack_marker scratch);
+void stack_destroy_markers();

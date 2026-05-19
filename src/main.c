@@ -1,3 +1,4 @@
+#include <omp.h>
 #include <time.h>
 #include "stack.h"
 #include "data_utils.h"
@@ -59,6 +60,7 @@ int main() { //NOSONAR
     pcg32_set_seed(seeds[0], seeds[1]);
 
     openblas_set_num_threads(1); // Hand over all the threading to OpenMP.
+    omp_set_num_threads(8); 
 
     stack *global_stack = stack_create();
 
@@ -222,6 +224,7 @@ int main() { //NOSONAR
     printf("------------------------------------------\n");
 
     stack_destroy(global_stack);
+    stack_destroy_markers();
 
     return 0;
 }
