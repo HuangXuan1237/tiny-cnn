@@ -9,14 +9,14 @@
 
 #define opt_coslr_step(scheduler, opt) \
     _Generic(opt, \
-        adam_optimizer*: _adam_coslr_step, \
-        sgd_optimizer*: _sgd_coslr_step \
+        adam_optimizer *: _adam_coslr_step, \
+        sgd_optimizer *: _sgd_coslr_step \
     )(scheduler, opt)
 
 #define opt_steplr_step(scheduler, opt) \
     _Generic(opt, \
-        adam_optimizer*: _adam_steplr_step, \
-        sgd_optimizer*: _sgd_steplr_step \
+        adam_optimizer *: _adam_steplr_step, \
+        sgd_optimizer *: _sgd_steplr_step \
     )(scheduler, opt)
 
 typedef struct adam_optimizer {

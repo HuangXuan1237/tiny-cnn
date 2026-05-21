@@ -333,14 +333,14 @@ static void _matrix_img2col( //NOSONAR
 ) {
     size_t out_h = (in_h + 2 * padding - k_size) / stride + 1;
     size_t out_w = (in_w + 2 * padding - k_size) / stride + 1;
-    size_t out_hw = out_h * out_w;
+    size_t out_spatial = out_h * out_w;
 
     memset(result->data, 0, sizeof(float) * result->rows * result->cols);
 
     for (size_t c = 0; c < in_c; ++c) {
         for (size_t ky = 0; ky < k_size; ++ky) {
             for (size_t kx = 0; kx < k_size; ++kx) {
-                size_t row_idx = (c * k_size * k_size + ky * k_size + kx) * out_hw;
+                size_t row_idx = (c * k_size * k_size + ky * k_size + kx) * out_spatial;
                 for (size_t y = 0; y < out_h; ++y) { //NOSONAR
                     int iy = (int)(y * stride + ky - padding);
                     if (iy < 0 || iy >= (int)in_h) {
@@ -420,14 +420,14 @@ static void _matrix_col2img( //NOSONAR
 ) {
     size_t out_h = (in_h + 2 * padding - k_size) / stride + 1;
     size_t out_w = (in_w + 2 * padding - k_size) / stride + 1;
-    size_t out_hw = out_h * out_w;
+    size_t out_spatial = out_h * out_w;
 
     memset(result->data, 0, sizeof(float) * result->rows * result->cols);
 
     for (size_t c = 0; c < in_c; ++c) {
         for (size_t ky = 0; ky < k_size; ++ky) {
             for (size_t kx = 0; kx < k_size; ++kx) {
-                size_t row_idx = (c * k_size * k_size + ky * k_size + kx) * out_hw;
+                size_t row_idx = (c * k_size * k_size + ky * k_size + kx) * out_spatial;
                 
                 for (size_t y = 0; y < out_h; ++y) { // NOSONAR
                     int iy = (int)(y * stride + ky - padding);

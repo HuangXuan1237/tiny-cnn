@@ -1,5 +1,6 @@
 #include <omp.h>
 #include <time.h>
+
 #include "stack.h"
 #include "data_utils.h"
 #include "matrix.h"
@@ -12,8 +13,8 @@
 #define EPOCHS 50
 #define LEARNING_RATE 5E-4F
 
-#define PRE_TRAINED 0
-#define MODEL_PATH "../model/test.bin"
+#define PRE_TRAINED 1
+#define MODEL_PATH "../model/current_best.bin"
 
 const char *CIFAR10_LABELS[10] = {
     "airplane", 
@@ -64,18 +65,19 @@ int main() { //NOSONAR
 
     stack *global_stack = stack_create();
 
-    dataset *cifar10_dataset[2];
-    cifar10_dataset[0] = dset_create(global_stack);
-    cifar10_dataset[1] = dset_create(global_stack);
+    dataset *the_dataset[2];
+    the_dataset[0] = dset_create(global_stack);
+    the_dataset[1] = dset_create(global_stack);
 
-    dset_load(
-        cifar10_dataset[0], cifar10_dataset[1], CIFAR10,
-        NORMALIZE|STANDARDIZE|RANDOM_HFLIP(0.5)|RANDOM_CROP(4)
+    dset_load_cifar10(
+        the_dataset[0], the_dataset[1],
+        NORMALIZE|STANDARDIZE|
+        RANDOM_HFLIP(0.5)|RANDOM_CROP(4)
     );
-     
+ 
     dataloader *loader[2];
-    loader[0] = dloader_create(global_stack, cifar10_dataset[0], BATCH_SIZE, 1);
-    loader[1] = dloader_create(global_stack, cifar10_dataset[1], BATCH_SIZE, 0);
+    loader[0] = dloader_create(global_stack, the_dataset[0], BATCH_SIZE, 1);
+    loader[1] = dloader_create(global_stack, the_dataset[1], BATCH_SIZE, 0);
 
     dloader_apply_label_smoothing(loader[0], 0.1F, 10);
 
@@ -84,6 +86,7 @@ int main() { //NOSONAR
     cifar10_custom_resnet(global_stack, model);
     nn_model_compile(global_stack, model);
 
+    // -----------------------------------TRAINING----------------------------------- //
     if (!PRE_TRAINED) {
         adam_optimizer *opt = adam_create(global_stack, model, LEARNING_RATE, 1E-4F);
 
@@ -101,7 +104,6 @@ int main() { //NOSONAR
         for (size_t epoch = 0; epoch < EPOCHS; epoch++) {
             clock_gettime(CLOCK_MONOTONIC, &start);
 
-            // -----------------------------------TRAINING----------------------------------- //
             float epoch_loss = 0;
 
             while (dloader_iterate(loader[0])) {
@@ -117,10 +119,10 @@ int main() { //NOSONAR
 
                 epoch_loss += batch_loss;
 
-                if (loader[0]->curr_batch % 10 == 0) { // NOSONAR
+                if (loader[0]->batch_index % 10 == 0) { // NOSONAR
                     printf(
                         "EPOCH %2zd/%2d | BATCH %3zd/%3zd | LOSS: %.4F\r",
-                        epoch + 1, EPOCHS, loader[0]->curr_batch, loader[0]->batch_count, batch_loss
+                        epoch + 1, EPOCHS, loader[0]->batch_index, loader[0]->batch_count, batch_loss
                     );
                     fflush(stdout);
                 }
@@ -179,49 +181,47 @@ int main() { //NOSONAR
     // -----------------------------------PREDICTION----------------------------------- //
     if (nn_model_load(model, MODEL_PATH)) {
         printf("模型已加载\n");
-    }
 
-    size_t image_count, batch_count; // NOSONAR
-    matrix **imageset = load_imageset(
-        global_stack, "../data/cifar10/test", 
-        32, 32, 3, BATCH_SIZE,
-        &image_count, &batch_count
-    );
+        dataset *image_set = dset_create(global_stack);
 
-    size_t *preds = (size_t*)stack_alloc(global_stack, sizeof(size_t) * image_count, 1);
-    for (size_t batch = 0; batch < batch_count; batch++) {
-        matrix *images = imageset[batch];
+        size_t image_count = dset_load_image_folder(
+            image_set, "../data/cifar10/test",
+            RESIZE(32, 32)|STANDARDIZE
+        );
 
-        matrix *processed_images = mat_create(global_stack, images->rows, images->cols);
-        standardize_image(processed_images, images, 32, 32 ,3);
+        dataloader *image_loader = dloader_create(global_stack, image_set, BATCH_SIZE, 0);
 
-        const matrix *output = nn_model_predict(global_stack, model, processed_images);
-        mat_argmax(output, preds + batch * BATCH_SIZE);
+        size_t *preds = (size_t*)stack_alloc(global_stack, sizeof(size_t) * BATCH_SIZE, 1);
+    
+        while(dloader_iterate(image_loader)) {
+            const matrix *output = nn_model_predict(global_stack, model, image_loader->curr_input);
+        
+            mat_argmax(output, preds);
+        
+            for (size_t i = 0; i < BATCH_SIZE; i++) {
+                size_t image_index = i + image_loader->batch_index * BATCH_SIZE;
+            
+                if (image_index >= image_count) { // NOSONAR
+                    break;
+                }
 
-        for (size_t i = 0; i < BATCH_SIZE; i++) {
-            size_t image_index = i + batch * BATCH_SIZE;
-            if (image_index == image_count) {
-                break;
+                printf("------------------------------------------\n");
+
+                const matrix *image_view = get_image_view(global_stack, image_set, image_index);
+                // Remember to update its content when using tmux in your terminal. XD
+                draw_image(image_view, 32, 32, 3);
+
+                printf(
+                    "图片序号: %2zu | 预测结果: [%s]\n",
+                    image_index, CIFAR10_LABELS[preds[i]]
+                );
             }
-
-            printf("------------------------------------------\n");
-
-            matrix image_view = {
-                .rows = 1,
-                .cols = 32 * 32 * 3,
-                .data = images->data + i * 32 * 32 * 3
-            };
-
-            // Remember to update its content when using tmux in your terminal. XD
-            draw_image(&image_view, 32, 32, 3);
-
-            printf(
-                "图片序号: %2zu | 预测结果: [%s]\n",
-                image_index, CIFAR10_LABELS[preds[image_index]]
-            );
         }
+
+        printf("------------------------------------------\n");
+    } else {
+        printf("🤣👉🤡\n");
     }
-    printf("------------------------------------------\n");
 
     stack_destroy(global_stack);
     stack_destroy_markers();

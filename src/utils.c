@@ -1,15 +1,7 @@
 #include "utils.h"
 
-#define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
-
-#define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb/stb_image_write.h>
-
-#define CIFAR10_W   32  // CIFAR-10 图像宽度
-#define CIFAR10_H   32  // CIFAR-10 图像高度
-#define CIFAR10_C   3   // CIFAR-10 图像通道数
-#define CIFAR10_T   10  // CIFAR-10 分类数
 
 void get_system_entropy(void *buffer, size_t size) {
     if (getrandom(buffer, size, 0) < 0) {
@@ -78,88 +70,49 @@ void debug_grad_stats(const nn_model *model, const char *phase) {
     );
 }
 
-matrix *load_image(stack *stk, const char *path, size_t w, size_t h, size_t c) {
-    int width, height, channels; // NOSONAR
-    uint8_t *image_data = stbi_load(path, &width, &height, &channels, 3);
-
-    if (image_data == NULL) {
+matrix *_get_image_view1(stack *stk, const matrix *src, size_t index) {
+    if (src == NULL || index >= src->rows) {
         return NULL;
     }
 
-    matrix *image = mat_create(stk, 1, w*h*c);
+    matrix *view = (matrix*)stack_alloc(stk, sizeof(matrix), 1);
+    
+    view->rows = 1;
+    view->cols = src->cols; 
+    
+    view->data = src->data + index * src->cols;
 
-    for (int hi = 0; hi < h; hi++) {
-        for (int wi = 0; wi < w; wi++) {
-            float gw = (float)wi * (float)(width - 1) / (float)(w - 1);
-            float gh = (float)hi * (float)(height - 1) / (float)(h - 1);
-            
-            int gwi = (int)gw;
-            int ghi = (int)gh;
-
-            int gwi_next = (gwi + 1 < width) ? gwi + 1 : gwi;
-            int ghi_next = (ghi + 1 < height) ? ghi + 1 : ghi;
-            
-            float dw = gw - (float)gwi;
-            float dh = gh - (float)ghi;
-
-            for (int ci = 0; ci < c; ci++) {
-                float c00 = image_data[(ghi*width+gwi)*3+ci] / 255.0F;
-                float c10 = image_data[(ghi*width+gwi_next)*3+ci] / 255.0F;
-                float c01 = image_data[(ghi_next*width+gwi)*3+ci] / 255.0F;
-                float c11 = image_data[(ghi_next*width+gwi_next)*3+ci] / 255.0F;
-
-                float value = (
-                    (1 - dw) * (1 - dh) * c00 +
-                    dw * (1 - dh) * c10 +
-                    (1 - dw) * dh * c01 +
-                    dw * dh * c11
-                );
-
-                image->data[ci*(h*w)+hi*w+wi] = value;
-            }
-        }
-    }
-
-    stbi_image_free(image_data);
-
-    return image;
+    return view;
 }
 
-void standardize_image(const matrix *result, const matrix *image, size_t w, size_t h, size_t c) {
-    if (image == NULL || image->data == NULL || result == NULL || result->data == NULL) {
-        return;
+matrix *_get_image_view2(stack *stk, const dataset *src, size_t index) {
+    if (src == NULL || index >= src->images->rows) {
+        return NULL;
     }
 
-    size_t spatial = w * h;
-    size_t image_size = spatial * c;
+    matrix *view = (matrix*)stack_alloc(stk, sizeof(matrix), 1);
+    
+    view->rows = 1;
+    view->cols = src->images->cols; 
+    
+    view->data = src->images->data + index * src->images->cols;
 
-    for (size_t b = 0; b < image->rows; b++) {
-        const float *image_data = image->data + (b * image_size);
-        float *result_data = result->data + (b * image_size);
+    return view;
+}
 
-        for (size_t ci = 0; ci < c; ci++) {
-            const float *img_channel = image_data + (ci * spatial);
-            float *res_channel = result_data + (ci * spatial);
-
-            float sum = 0.0F;
-            for (size_t i = 0; i < spatial; i++) {
-                sum += img_channel[i];
-            }
-            float mean = sum / (float)spatial;
-
-            float sq_diff_sum = 0.0F;
-            for (size_t i = 0; i < spatial; i++) {
-                float diff = img_channel[i] - mean;
-                sq_diff_sum += diff * diff;
-            }
-            float std = sqrtf(sq_diff_sum / (float)spatial);
-            float inv_std = 1.0F / (std + 1e-8F);
-
-            for (size_t i = 0; i < spatial; i++) {
-                res_channel[i] = (img_channel[i] - mean) * inv_std;
-            }
-        }
+matrix *_get_image_view3(stack *stk, const dataloader *src, size_t index) {
+    if (src == NULL || index >= src->images->rows) {
+        return NULL;
     }
+
+    matrix *view = (matrix*)stack_alloc(stk, sizeof(matrix), 1);
+    
+    view->rows = 1;
+    view->cols = src->images->cols; 
+    
+    view->data = src->images->data + index * src->images->cols;
+
+    return view;
 }
 
 void draw_image(const matrix *image, size_t w, size_t h, size_t c) {
@@ -204,99 +157,4 @@ void draw_image(const matrix *image, size_t w, size_t h, size_t c) {
 
     free(pixels);
     remove(temp_file);
-}
-
-static bool _is_image_exist(const char *filename) {
-    const char *ext = strrchr(filename, '.');
-    if (ext == NULL) {
-        return 0;
-    }
-
-    return (
-        strcasecmp(ext, ".jpg") == 0 || strcasecmp(ext, ".jpeg") == 0 ||
-        strcasecmp(ext, ".png") == 0 || strcasecmp(ext, ".bmp") == 0
-    );
-}
-
-matrix **load_imageset( // NOSONAR
-    stack *stk, const char *folder_path,
-    size_t w, size_t h, size_t c, size_t batch_size,
-    size_t *image_count, size_t *batch_count
-) {
-    stack_marker scratch = stack_get_marker(&stk, 1);
-    size_t ic = 0;
-
-    DIR *dir = opendir(folder_path);
-    if (dir == NULL) {
-        *image_count = 0;
-        *batch_count = 0;
-
-        stack_drop_marker(scratch);
-
-        return NULL;
-    }
-
-    struct dirent *entry;
-    while ((entry = readdir(dir)) != NULL) {
-        if (_is_image_exist(entry->d_name)) {
-            ic++;
-        }
-    }
-    closedir(dir);
-
-    if (ic == 0) {
-        *image_count = 0;
-        *batch_count = 0;
-
-        stack_drop_marker(scratch);
-
-        return NULL;
-    }
-
-    char **file_paths = (char**)stack_alloc(scratch.stk, sizeof(char*) * ic, 1);
-    size_t index = 0;
-
-    dir = opendir(folder_path);
-    if (dir) {
-        while ((entry = readdir(dir)) != NULL) {
-            if (_is_image_exist(entry->d_name)) {
-                char *full_path = (char*)stack_alloc(scratch.stk, 512, 0);
-                snprintf(full_path, 128, "%s/%s", folder_path, entry->d_name);
-
-                file_paths[index++] = full_path;
-            }
-        }
-        closedir(dir);
-    }
-
-    size_t bc = (ic + batch_size - 1) / batch_size;
-    matrix **loader = (matrix**)stack_alloc(stk, sizeof(matrix*) * bc, 1);
-    size_t image_size = w * h * c;
-
-    index = 0;
-    for (size_t b = 0; b < bc; b++) {
-        size_t current_batch_size = (b == bc - 1) ? (ic - b * batch_size) : batch_size;
-        loader[b] = mat_create(stk, current_batch_size, image_size);
-
-        for (size_t i = 0; i < current_batch_size; i++) {
-            const char *path = file_paths[index++];
-            
-            const matrix *temp = load_image(scratch.stk, path, w, h, c);
-            
-            if (temp != NULL) {
-                memcpy(
-                    loader[b]->data + (i * image_size), 
-                    temp->data, 
-                    image_size * sizeof(float)
-                );   
-            }
-        }
-    }
-
-    *image_count = ic;
-    *batch_count = bc;
-
-    stack_drop_marker(scratch);
-
-    return loader;
 }

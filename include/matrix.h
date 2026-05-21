@@ -1,10 +1,10 @@
 #pragma once
 
 #include "stack.h"
-#include "pcg32.h"
 
 #include <cblas.h>
 #include <float.h>
+#include <math.h>
 #include <omp.h>
 #include <stdlib.h>
 

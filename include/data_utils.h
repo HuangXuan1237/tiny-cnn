@@ -4,8 +4,12 @@
 #include "matrix.h"
 #include "pcg32.h" // IWYU pragma: export
 
+#include <dirent.h>
 #include <math.h> // IWYU pragma: export
 #include <omp.h>
+
+#define RESIZE(w, h) \
+    _pack_uint16_by2(w, h, _RESIZE)
 
 #define RANDOM_HFLIP(prob) \
     _pack_float(prob, _RANDOM_HFLIP)
@@ -22,8 +26,9 @@ typedef enum data_source {
 typedef enum data_tranforms {
     NORMALIZE       =   1 << 0,
     STANDARDIZE     =   1 << 1,
-    _RANDOM_HFLIP   =   1 << 2,
-    _RANDOM_CROP    =   1 << 3
+    _RESIZE         =   1 << 2,
+    _RANDOM_HFLIP   =   1 << 3,
+    _RANDOM_CROP    =   1 << 4
 } data_tranforms;
 
 typedef struct dataset {
@@ -37,6 +42,8 @@ typedef struct dataset {
     size_t w, h, c; //NOSONAR
     size_t t;
 
+    bool is_normalized;
+    bool is_standardized;
     float hflip_prob;
     size_t crop_padding;
 } dataset;
@@ -60,15 +67,21 @@ typedef struct dataloader {
     size_t batch_size;
     size_t batch_count;
 
-    size_t curr_batch;
+    bool is_start;
+    size_t batch_index;
 } dataloader;
 
-uint32_t _pack_float(float f, uint8_t flag);
-uint32_t _pack_uint8(uint8_t value, uint8_t flag);
+uint64_t _pack_uint16_by2(uint16_t value1, uint16_t value2, uint8_t flag);
+uint64_t _pack_float(float value, uint8_t flag);
+uint64_t _pack_uint8(uint8_t value, uint8_t flag);
 
 dataset *dset_create(stack *stk);
 
 bool dset_load(dataset *train_ds, dataset *val_ds, data_source src, uint32_t transfroms);
+
+bool dset_load_cifar10(dataset *train_ds, dataset *val_ds, uint64_t transforms);
+
+size_t dset_load_image_folder(dataset *ds, const char *folder_path, uint64_t transforms);
 
 dataset *dset_subset(stack *stk, const dataset *ds, size_t class_count, const int *selected_classes);
 
