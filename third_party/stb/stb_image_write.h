@@ -1652,7 +1652,7 @@ STBIWDEF int stbi_write_jpg(char const *filename, int x, int y, int comp, const 
              monochrome BMP expansion
       1.03   ???
       1.02 (2016-04-02)
-             avoid allocating large structures on the stack
+             avoid allocating large structures on the objstack
       1.01 (2016-01-16)
              STBIW_REALLOC_SIZED: support allocators with no realloc support
              avoid race-condition in crc initialization

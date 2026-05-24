@@ -1,5 +1,10 @@
 #include "nn.h"
 
+#include <math.h>
+#include <stdio.h>
+
+#include "pcg32.h"
+
 #define NN_GET_INPUT_COUNT(op) ( \
     (op) < _TENSOR_OP_UNARY  ? 0 : \
     (op) < _TENSOR_OP_BINARY ? 1 : \
@@ -7,11 +12,11 @@
 )
 
 nn_tensor* nn_tensor_create(
-    stack* stk, nn_model* model,
+    obs* stk, nn_model* model,
     size_t c, size_t h, size_t w,
     size_t batch_size, uint32_t flags
 ) {
-    nn_tensor* tensor = (nn_tensor*)stack_alloc(stk, sizeof(nn_tensor), 1);
+    nn_tensor* tensor = (nn_tensor*)obs_alloc(stk, sizeof(nn_tensor), 1);
 
     tensor->c = c; 
     tensor->h = h; 
@@ -48,7 +53,7 @@ nn_tensor* nn_tensor_create(
 }
 
 static nn_tensor* _nn_tensor_unary_impl( //NOSONAR
-    stack* stk, nn_model* model,
+    obs* stk, nn_model* model,
     nn_tensor* input, size_t c, size_t h, size_t w,
     uint32_t flags, nn_tensor_ops op
 ) {
@@ -66,7 +71,7 @@ static nn_tensor* _nn_tensor_unary_impl( //NOSONAR
 }
 
 nn_tensor* nn_func_dropout(
-    stack* stk, nn_model* model,
+    obs* stk, nn_model* model,
     nn_tensor* input, float p, uint32_t flags
 ) {
     if (p < 0.0f || p >= 1.0f) {
@@ -92,7 +97,7 @@ nn_tensor* nn_func_dropout(
 }
 
 nn_tensor* nn_func_maxpool2d(
-    stack* stk, nn_model* model,
+    obs* stk, nn_model* model,
     nn_tensor* input, size_t k_size, size_t stride,
     uint32_t flags
 ) {
@@ -114,7 +119,7 @@ nn_tensor* nn_func_maxpool2d(
 }
 
 nn_tensor* nn_func_gapool2d(
-    stack* stk, nn_model* model,
+    obs* stk, nn_model* model,
     nn_tensor* input, uint32_t flags
 ) {
     size_t c = input->c;
@@ -126,7 +131,7 @@ nn_tensor* nn_func_gapool2d(
 }
 
 nn_tensor* nn_func_relu(
-    stack* stk, nn_model* model,
+    obs* stk, nn_model* model,
     nn_tensor* input, uint32_t flags
 ) {
     return _nn_tensor_unary_impl(
@@ -137,7 +142,7 @@ nn_tensor* nn_func_relu(
 }
 
 nn_tensor* nn_func_softmax(
-    stack* stk, nn_model* model,
+    obs* stk, nn_model* model,
     nn_tensor* input, uint32_t flags
 ) {
     return _nn_tensor_unary_impl(
@@ -148,7 +153,7 @@ nn_tensor* nn_func_softmax(
 }
 
 static nn_tensor* _nn_tensor_binary_impl( //NOSONAR
-    stack* stk, nn_model* model,
+    obs* stk, nn_model* model,
     nn_tensor* x, nn_tensor* y,
     size_t c, size_t h, size_t w,
     uint32_t flags, nn_tensor_ops op
@@ -169,7 +174,7 @@ static nn_tensor* _nn_tensor_binary_impl( //NOSONAR
 }
 
 nn_tensor* nn_func_add(
-    stack* stk, nn_model* model,
+    obs* stk, nn_model* model,
     nn_tensor* x, nn_tensor* y, uint32_t flags
 ) {
     if (x->c != y->c) {
@@ -197,7 +202,7 @@ nn_tensor* nn_func_add(
 }
 
 nn_tensor* nn_func_conv2d( //NOSONAR
-    stack* stk, nn_model* model,
+    obs* stk, nn_model* model,
     nn_tensor* input, nn_tensor* kernel, 
     size_t k_size, size_t stride, size_t padding,
     uint32_t flags
@@ -231,7 +236,7 @@ nn_tensor* nn_func_conv2d( //NOSONAR
 }
 
 nn_tensor* nn_func_cross_entropy(
-    stack* stk, nn_model* model,
+    obs* stk, nn_model* model,
     nn_tensor* p, nn_tensor* q, uint32_t flags
 ) {
     size_t p_size = p->c * p->h * p->w;
@@ -257,7 +262,7 @@ nn_tensor* nn_func_cross_entropy(
 }
 
 nn_tensor* nn_func_matmul(
-    stack* stk, nn_model* model,
+    obs* stk, nn_model* model,
     nn_tensor* x, nn_tensor* y, uint32_t flags
 ) {    
     size_t x_size = x->c * x->h * x->w;
@@ -284,7 +289,7 @@ nn_tensor* nn_func_matmul(
 }
 
 nn_tensor* nn_func_batchnorm2d( //NOSONAR
-    stack* stk, nn_model* model,
+    obs* stk, nn_model* model,
     nn_tensor* input, nn_tensor* gamma, nn_tensor* beta,
     float eps, float momentum,
     uint32_t flags
@@ -300,7 +305,7 @@ nn_tensor* nn_func_batchnorm2d( //NOSONAR
     size_t w = input->w;
     size_t spatial = h * w;
 
-    nn_tensor* tensor = (nn_tensor*)stack_alloc(stk, sizeof(nn_tensor), 1);
+    nn_tensor* tensor = (nn_tensor*)obs_alloc(stk, sizeof(nn_tensor), 1);
 
     tensor->c = c;
     tensor->h = h;
@@ -340,7 +345,7 @@ nn_tensor* nn_func_batchnorm2d( //NOSONAR
 }
 
 nn_tensor *nn_layer_input(
-    stack* stk, nn_model* model,
+    obs* stk, nn_model* model,
     size_t c, size_t h, size_t w,
     size_t batch_size
 ) {
@@ -348,7 +353,7 @@ nn_tensor *nn_layer_input(
 }
 
 nn_tensor *nn_layer_target(
-    stack* stk, nn_model* model,
+    obs* stk, nn_model* model,
     size_t c, size_t h, size_t w,
     size_t batch_size
 ) {
@@ -356,7 +361,7 @@ nn_tensor *nn_layer_target(
 }
 
 nn_tensor *nn_layer_batchnorm2d(
-    stack *stk, nn_model *model, nn_tensor *input
+    obs *stk, nn_model *model, nn_tensor *input
 ) {
     size_t oc = input->c; 
 
@@ -370,7 +375,7 @@ nn_tensor *nn_layer_batchnorm2d(
 }
 
 nn_tensor *nn_layer_conv2d(
-    stack *stk, nn_model *model,
+    obs *stk, nn_model *model,
     nn_tensor *input, 
     size_t out_channels, size_t k_size,
     size_t stride, size_t padding
@@ -402,25 +407,25 @@ nn_tensor *nn_layer_conv2d(
 }
 
 nn_tensor *nn_layer_cross_entropy(
-    stack *stk, nn_model *model, nn_tensor *pred, nn_tensor *target
+    obs *stk, nn_model *model, nn_tensor *pred, nn_tensor *target
 ) {
     return nn_func_cross_entropy(stk, model, pred, target, TENSOR_AS_LOSS);
 }
 
 nn_tensor *nn_layer_dropout(
-    stack *stk, nn_model *model, nn_tensor *input, float prob
+    obs *stk, nn_model *model, nn_tensor *input, float prob
 ) {
     return nn_func_dropout(stk, model, input, prob, 0);
 }
 
 nn_tensor *nn_layer_gapool2d(
-    stack *stk, nn_model *model, nn_tensor *input
+    obs *stk, nn_model *model, nn_tensor *input
 ) {
     return nn_func_gapool2d(stk, model, input, 0);
 }
 
 nn_tensor *nn_layer_linear(
-    stack *stk, nn_model *model, nn_tensor *input, size_t out_features
+    obs *stk, nn_model *model, nn_tensor *input, size_t out_features
 ) {
     size_t fs = input->c * input->h * input->w;
 
@@ -448,18 +453,18 @@ nn_tensor *nn_layer_linear(
 }
 
 nn_tensor *nn_layer_maxpool2d(
-    stack *stk, nn_model * model, nn_tensor *input,
+    obs *stk, nn_model * model, nn_tensor *input,
     size_t k_size, size_t stride
 ) {
     return nn_func_maxpool2d(stk, model, input, k_size, stride, 0);
 }
 
-nn_tensor *nn_layer_relu(stack *stk, nn_model *model, nn_tensor *input) {
+nn_tensor *nn_layer_relu(obs *stk, nn_model *model, nn_tensor *input) {
     return nn_func_relu(stk, model, input, 0);
 }
 
 nn_tensor* nn_layer_residual_block(
-    stack* stk, nn_model* model,
+    obs* stk, nn_model* model,
     nn_tensor* input,
     size_t in_planes, size_t out_planes,
     size_t stride
@@ -521,7 +526,7 @@ nn_tensor* nn_layer_residual_block(
     return out;
 }
 
-nn_tensor *nn_layer_softmax(stack *stk, nn_model *model, nn_tensor *input) {
+nn_tensor *nn_layer_softmax(obs *stk, nn_model *model, nn_tensor *input) {
     return nn_func_softmax(stk, model, input, TENSOR_AS_OUTPUT);
 }
 
@@ -830,8 +835,8 @@ static void _backward(const _nn_graph* graph) { //NOSONAR
     }
 }
 
-nn_model* nn_model_create(stack* stk) {
-    return (nn_model*)stack_alloc(stk, sizeof(nn_model), 1);
+nn_model* nn_model_create(obs* stk) {
+    return (nn_model*)obs_alloc(stk, sizeof(nn_model), 1);
 }
 
 static void __nn_graph_dfs(nn_tensor* node, bool* visited, nn_tensor** graph, size_t* size) {
@@ -849,28 +854,28 @@ static void __nn_graph_dfs(nn_tensor* node, bool* visited, nn_tensor** graph, si
     graph[(*size)++] = node;
 }
 
-static _nn_graph __nn_graph_create(stack* stk, const nn_model* model, nn_tensor* node) {
-    stack_marker scratch = stack_get_marker(&stk, 1);
+static _nn_graph __nn_graph_create(obs* stk, const nn_model* model, nn_tensor* node) {
+    obs_marker scratch = obs_get_marker(&stk, 1);
 
-    bool* visited = (bool*)stack_alloc(scratch.stk, sizeof(bool) * model->tensor_count, 1);
+    bool* visited = (bool*)obs_alloc(scratch.stk, sizeof(bool) * model->tensor_count, 1);
 
-    nn_tensor** graph_tensors = (nn_tensor**)stack_alloc(scratch.stk, sizeof(nn_tensor*) * model->tensor_count, 1);
+    nn_tensor** graph_tensors = (nn_tensor**)obs_alloc(scratch.stk, sizeof(nn_tensor*) * model->tensor_count, 1);
     size_t graph_size = 0;
 
     __nn_graph_dfs(node, visited, graph_tensors, &graph_size);
 
     _nn_graph graph = {
         .tensor_count = graph_size,
-        .tensors = stack_alloc(stk, sizeof(nn_tensor*) * graph_size, 0)
+        .tensors = obs_alloc(stk, sizeof(nn_tensor*) * graph_size, 0)
     };
 
     memcpy(graph.tensors, graph_tensors, sizeof(nn_tensor*) * graph_size);
 
-    stack_drop_marker(scratch);
+    obs_drop_marker(scratch);
     return graph;
 }
 
-void nn_model_compile(stack* stk, nn_model* model) {
+void nn_model_compile(obs* stk, nn_model* model) {
     if (model->output != NULL) {
         model->forward_graph = __nn_graph_create(
             stk, model, model->output
@@ -900,7 +905,7 @@ float nn_model_criterion(nn_model* model, matrix* input, matrix* target) {
     return mat_sum(model->loss->value);
 }
 
-matrix* nn_model_predict(stack *stk, nn_model* model, matrix* input) {
+matrix* nn_model_predict(obs *stk, nn_model* model, matrix* input) {
     size_t batch_rows = model->input->value->rows;
     size_t input_rows = input->rows;
     size_t input_cols = input->cols;
@@ -917,7 +922,7 @@ matrix* nn_model_predict(stack *stk, nn_model* model, matrix* input) {
     }
     
     else if (input_rows < batch_rows) {
-        stack_marker scratch = stack_get_marker(&stk, 1);
+        obs_marker scratch = obs_get_marker(&stk, 1);
         
         matrix* temp_input = mat_create(scratch.stk, batch_rows, input_cols);
 
@@ -939,7 +944,7 @@ matrix* nn_model_predict(stack *stk, nn_model* model, matrix* input) {
             input_rows * out_size * sizeof(float)
         );
 
-        stack_drop_marker(scratch);
+        obs_drop_marker(scratch);
     }
 
     model->input->value->data = checkpoint;

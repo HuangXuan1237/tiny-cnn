@@ -1,5 +1,9 @@
 #include "optimizer.h"
 
+#include <math.h>
+#include <stdlib.h>
+#include <sys/types.h>
+
 #define PI 3.14159265358979323846264338327950288419716939937
 
 void opt_zero_grad(const nn_model *model) {
@@ -11,8 +15,8 @@ void opt_zero_grad(const nn_model *model) {
     }
 }
 
-adam_optimizer *adam_create(stack *stk, const nn_model *model, float lr, float weight_decay) {
-    adam_optimizer *opt = (adam_optimizer*)stack_alloc(stk, sizeof(adam_optimizer), 1);
+adam_optimizer *adam_create(obs *stk, const nn_model *model, float lr, float weight_decay) {
+    adam_optimizer *opt = (adam_optimizer*)obs_alloc(stk, sizeof(adam_optimizer), 1);
 
     opt->stk = stk;
     opt->lr = lr;
@@ -23,8 +27,8 @@ adam_optimizer *adam_create(stack *stk, const nn_model *model, float lr, float w
     opt->t = 0.0F;
 
     size_t count = model->backward_graph.tensor_count;
-    opt->m = (matrix**)stack_alloc(opt->stk, sizeof(matrix*) * count, 1);
-    opt->v = (matrix**)stack_alloc(opt->stk, sizeof(matrix*) * count, 1);
+    opt->m = (matrix**)obs_alloc(opt->stk, sizeof(matrix*) * count, 1);
+    opt->v = (matrix**)obs_alloc(opt->stk, sizeof(matrix*) * count, 1);
 
     for (size_t i = 0; i < count; i++) {
         const nn_tensor *curr = model->backward_graph.tensors[i];
@@ -102,8 +106,8 @@ void adamw_step(adam_optimizer *opt, const nn_model *model) {
     }
 }
 
-sgd_optimizer *sgd_create(stack *stk, const nn_model *model, float lr, float momentum, float weight_decay, bool nesterov) {
-    sgd_optimizer *opt = (sgd_optimizer*)stack_alloc(stk, sizeof(sgd_optimizer), 1);
+sgd_optimizer *sgd_create(obs *stk, const nn_model *model, float lr, float momentum, float weight_decay, bool nesterov) {
+    sgd_optimizer *opt = (sgd_optimizer*)obs_alloc(stk, sizeof(sgd_optimizer), 1);
     opt->stk = stk;
     opt->lr = lr;
     opt->momentum = momentum;
@@ -112,7 +116,7 @@ sgd_optimizer *sgd_create(stack *stk, const nn_model *model, float lr, float mom
     opt->nesterov = nesterov;
 
     size_t count = model->backward_graph.tensor_count;
-    opt->momentum_buf = (matrix**)stack_alloc(stk, sizeof(matrix*) * count, 1);
+    opt->momentum_buf = (matrix**)obs_alloc(stk, sizeof(matrix*) * count, 1);
 
     for (size_t i = 0; i < count; i++) {
         const nn_tensor *curr = model->backward_graph.tensors[i];
@@ -158,13 +162,13 @@ void sgd_step(const sgd_optimizer *opt, const nn_model *model, size_t batch_size
     }
 }
 
-ema_optimizer* ema_create(stack *stk, const nn_model *model, float decay) {
-    ema_optimizer *ema = (ema_optimizer*)stack_alloc(stk, sizeof(ema_optimizer), 1);
+ema_optimizer* ema_create(obs *stk, const nn_model *model, float decay) {
+    ema_optimizer *ema = (ema_optimizer*)obs_alloc(stk, sizeof(ema_optimizer), 1);
     ema->stk = stk;
     ema->decay = decay;
     ema->tensor_count = model->backward_graph.tensor_count;
     
-    ema->shadow_values = (matrix**)stack_alloc(stk, sizeof(matrix*) * ema->tensor_count, 1);
+    ema->shadow_values = (matrix**)obs_alloc(stk, sizeof(matrix*) * ema->tensor_count, 1);
     
     for (size_t i = 0; i < ema->tensor_count; i++) {
         const nn_tensor *t = model->backward_graph.tensors[i];
@@ -183,10 +187,10 @@ ema_optimizer* ema_create(stack *stk, const nn_model *model, float decay) {
     return ema;
 }
 
-matrix **ema_create_backup_space(stack *stk, const nn_model *model) {
+matrix **ema_create_backup_space(obs *stk, const nn_model *model) {
     size_t count = model->backward_graph.tensor_count;
     
-    matrix **backup_space = (matrix**)stack_alloc(stk, sizeof(matrix*) * count, 1);
+    matrix **backup_space = (matrix**)obs_alloc(stk, sizeof(matrix*) * count, 1);
     
     for (size_t i = 0; i < count; i++) {
         const nn_tensor *t = model->backward_graph.tensors[i];
@@ -251,8 +255,8 @@ void ema_restore_weight(const ema_optimizer *ema, const nn_model *model, matrix 
     }
 }
 
-coslr_scheduler *coslr_create(stack *stk, float initial_lr, float min_lr, size_t T_max) {
-    coslr_scheduler *scheduler = (coslr_scheduler*)stack_alloc(stk, sizeof(coslr_scheduler), 1);
+coslr_scheduler *coslr_create(obs *stk, float initial_lr, float min_lr, size_t T_max) {
+    coslr_scheduler *scheduler = (coslr_scheduler*)obs_alloc(stk, sizeof(coslr_scheduler), 1);
 
     scheduler->initial_lr = initial_lr;
     scheduler->min_lr = min_lr;
@@ -292,8 +296,8 @@ void _sgd_coslr_step(coslr_scheduler *scheduler, sgd_optimizer *opt) {
     scheduler->current_step++;
 }
 
-steplr_scheduler *steplr_create(stack *stk, float initial_lr, float gamma, size_t step_size) {
-    steplr_scheduler *scheduler = (steplr_scheduler*)stack_alloc(stk, sizeof(steplr_scheduler), 1);
+steplr_scheduler *steplr_create(obs *stk, float initial_lr, float gamma, size_t step_size) {
+    steplr_scheduler *scheduler = (steplr_scheduler*)obs_alloc(stk, sizeof(steplr_scheduler), 1);
     scheduler->initial_lr = initial_lr;
     scheduler->gamma = gamma;
     scheduler->step_size = step_size;

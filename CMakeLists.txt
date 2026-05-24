@@ -7,6 +7,10 @@ set(CMAKE_C_STANDARD 17)
 
 add_compile_options(-O3 -flto=auto -mavx2 -mfma)
 
+# Debug Only
+# add_compile_options(-fsanitize=address -fno-omit-frame-pointer -g)
+# add_link_options(-fsanitize=address)
+
 find_package(OpenMP REQUIRED)
 find_library(OPENBLAS_LIB NAMES openblas)
 find_library(MATH_LIB m)

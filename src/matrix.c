@@ -1,11 +1,17 @@
 #include "matrix.h"
 
-matrix *mat_create(stack *stk, size_t rows, size_t cols) {
-    matrix *mat = (matrix*)stack_alloc(stk, sizeof(matrix), 1);
+#include <cblas.h>
+#include <float.h>
+#include <math.h>
+#include <omp.h>
+#include <stdlib.h>
+
+matrix *mat_create(obs *stk, size_t rows, size_t cols) {
+    matrix *mat = (matrix*)obs_alloc(stk, sizeof(matrix), 1);
 
     mat->rows = rows;
     mat->cols = cols;
-    mat->data = (float*)stack_alloc(stk, sizeof(float) * rows * cols, 1);
+    mat->data = (float*)obs_alloc(stk, sizeof(float) * rows * cols, 1);
 
     mat_fill(mat, 0.0f);
 
@@ -158,9 +164,9 @@ bool mat_batchnorm2d( //NOSONAR
 
     if (is_training) {
         // 使用项目的内存池（stack）替代 _builtin_alloca，保证多线程下的栈安全
-        stack_marker scratch = stack_get_marker(NULL, 0);
-        float *mean = (float*)stack_alloc(scratch.stk, channels * sizeof(float), 1);
-        float *var = (float*)stack_alloc(scratch.stk, channels * sizeof(float), 1);
+        obs_marker scratch = obs_get_marker(NULL, 0);
+        float *mean = (float*)obs_alloc(scratch.stk, channels * sizeof(float), 1);
+        float *var = (float*)obs_alloc(scratch.stk, channels * sizeof(float), 1);
 
         for (size_t c = 0; c < channels; c++) {
             mean[c] = 0.0f;
@@ -231,7 +237,7 @@ bool mat_batchnorm2d( //NOSONAR
         }
 
         // 释放临时内存，回滚状态
-        stack_drop_marker(scratch);
+        obs_drop_marker(scratch);
     } else {
         #pragma omp parallel for collapse(2)
         for (size_t n = 0; n < batch_size; n++) {
@@ -267,9 +273,9 @@ bool mat_grad_batchnorm2d( //NOSONAR
     float ns = (float)(batch_size * spatial);
 
     // 使用项目的内存池（stack）替代 _builtin_alloca
-    stack_marker scratch = stack_get_marker(NULL, 0);
-    float *sum_dy = (float*)stack_alloc(scratch.stk, channels * sizeof(float), 1);
-    float *sum_dy_x_hat = (float*)stack_alloc(scratch.stk, channels * sizeof(float), 1);
+    obs_marker scratch = obs_get_marker(NULL, 0);
+    float *sum_dy = (float*)obs_alloc(scratch.stk, channels * sizeof(float), 1);
+    float *sum_dy_x_hat = (float*)obs_alloc(scratch.stk, channels * sizeof(float), 1);
 
     for (size_t c = 0; c < channels; c++) {
         sum_dy[c] = 0.0f;
@@ -321,7 +327,7 @@ bool mat_grad_batchnorm2d( //NOSONAR
         }
     }
 
-    stack_drop_marker(scratch);
+    obs_drop_marker(scratch);
 
     return 1;
 }
@@ -381,7 +387,7 @@ bool mat_conv2d( //NOSONAR
 
     #pragma omp parallel for
     for (size_t b = 0; b < batch_size; b++) {
-        stack_marker scratch = stack_get_marker(NULL, 0);
+        obs_marker scratch = obs_get_marker(NULL, 0);
         
         matrix *col_mat = mat_create(scratch.stk, in_c * k_size * k_size, out_h * out_w);
         matrix *temp = mat_create(scratch.stk, out_c, out_h * out_w);
@@ -407,7 +413,7 @@ bool mat_conv2d( //NOSONAR
 
         memcpy(result->data + b * out_stride, temp->data, sizeof(float) * out_stride);
 
-        stack_drop_marker(scratch);
+        obs_drop_marker(scratch);
     }
 
     return 1;
@@ -469,7 +475,7 @@ bool mat_grad_conv2d( //NOSONAR
 
     #pragma omp parallel
     {
-        stack_marker scratch = stack_get_marker(NULL, 0);
+        obs_marker scratch = obs_get_marker(NULL, 0);
 
         matrix *local_grad_kernel = NULL;
         if (kernel_grad) {
@@ -524,7 +530,7 @@ bool mat_grad_conv2d( //NOSONAR
             }
         }
 
-        stack_drop_marker(scratch);
+        obs_drop_marker(scratch);
     }
 
     return 1;

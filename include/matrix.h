@@ -1,12 +1,6 @@
 #pragma once
 
-#include "stack.h"
-
-#include <cblas.h>
-#include <float.h>
-#include <math.h>
-#include <omp.h>
-#include <stdlib.h>
+#include "obs.h"
 
 //Row-Major
 typedef struct matrix {
@@ -16,7 +10,7 @@ typedef struct matrix {
     float *data;
 } matrix;
 
-matrix *mat_create(stack *stk, size_t rows, size_t cols);
+matrix *mat_create(obs *stk, size_t rows, size_t cols);
 
 bool mat_load(matrix *mat, size_t rows, size_t cols, const char *filename);
 

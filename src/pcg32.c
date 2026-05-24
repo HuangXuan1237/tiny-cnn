@@ -1,5 +1,8 @@
 #include "pcg32.h"
 
+#include <math.h>
+#include <stdbool.h>
+
 #define PI 3.14159265358979323846F
 #define PCG32_INV_24BIT 5.9604644775390625E-8F
 

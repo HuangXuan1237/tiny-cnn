@@ -1,11 +1,14 @@
+#include <cblas.h>
 #include <omp.h>
+#include <stdio.h>
 #include <time.h>
 
-#include "stack.h"
+#include "obs.h"
 #include "data_utils.h"
 #include "matrix.h"
 #include "nn.h"
 #include "optimizer.h"
+#include "pcg32.h"
 #include "utils.h"
 
 #define NUM_SELECTED 5
@@ -13,8 +16,9 @@
 #define EPOCHS 50
 #define LEARNING_RATE 5E-4F
 
-#define PRE_TRAINED 1
-#define MODEL_PATH "../model/current_best.bin"
+#define PRE_TRAINED 0
+// #define MODEL_PATH "../model/current_best.bin"
+#define MODEL_PATH "../model/test.bin"
 
 const char *CIFAR10_LABELS[10] = {
     "airplane", 
@@ -29,7 +33,7 @@ const char *CIFAR10_LABELS[10] = {
     "truck"
 };
 
-void cifar10_custom_resnet(stack *stk, nn_model *model) {
+void cifar10_custom_resnet(obs *stk, nn_model *model) {
     nn_tensor *input = nn_layer_input(stk, model, 3, 32, 32, BATCH_SIZE);
     nn_tensor *target = nn_layer_target(stk, model, 1, 1, 10, BATCH_SIZE);
 
@@ -56,14 +60,14 @@ void cifar10_custom_resnet(stack *stk, nn_model *model) {
 
 int main() { //NOSONAR
     uint64_t seeds[2];
-    get_system_entropy(seeds, sizeof(seeds));
+    utils_get_system_entropy(seeds, sizeof(seeds));
 
     pcg32_set_seed(seeds[0], seeds[1]);
 
     openblas_set_num_threads(1); // Hand over all the threading to OpenMP.
     omp_set_num_threads(8); 
 
-    stack *global_stack = stack_create();
+    obs *global_stack = obs_create();
 
     dataset *the_dataset[2];
     the_dataset[0] = dset_create(global_stack);
@@ -98,8 +102,8 @@ int main() { //NOSONAR
 
         struct timespec start, end; // NOSONAR
         
-        size_t *preds = stack_alloc(global_stack, sizeof(size_t) * BATCH_SIZE, 1);
-        size_t *targets = stack_alloc(global_stack, sizeof(size_t) * BATCH_SIZE, 1);
+        size_t *preds = obs_alloc(global_stack, sizeof(size_t) * BATCH_SIZE, 1);
+        size_t *targets = obs_alloc(global_stack, sizeof(size_t) * BATCH_SIZE, 1);
 
         for (size_t epoch = 0; epoch < EPOCHS; epoch++) {
             clock_gettime(CLOCK_MONOTONIC, &start);
@@ -121,7 +125,7 @@ int main() { //NOSONAR
 
                 if (loader[0]->batch_index % 10 == 0) { // NOSONAR
                     printf(
-                        "EPOCH %2zd/%2d | BATCH %3zd/%3zd | LOSS: %.4F\r",
+                        "EPOCH %2zd/%2d | BATCH %3zd/%3zd | LOSS: %.4f\r",
                         epoch + 1, EPOCHS, loader[0]->batch_index, loader[0]->batch_count, batch_loss
                     );
                     fflush(stdout);
@@ -165,7 +169,7 @@ int main() { //NOSONAR
             );
 
             printf(
-                "\rEPOCH %2zd | AVG LOSS: %.4F | 验证准确率: %.2F%% | 耗时: %.2F 秒\n",
+                "\rEPOCH %2zd | AVG LOSS: %.4f | 验证准确率: %.2f%% | 耗时: %.2f 秒\n",
                 epoch+1, epoch_loss / (float)loader[0]->batch_count, 
                 (float)num_matched / (float)sc * 100.0F, elapsed
             );
@@ -186,12 +190,12 @@ int main() { //NOSONAR
 
         size_t image_count = dset_load_image_folder(
             image_set, "../data/cifar10/test",
-            RESIZE(32, 32)|STANDARDIZE
+            RESIZE(32, 32)|NORMALIZE|STANDARDIZE
         );
 
         dataloader *image_loader = dloader_create(global_stack, image_set, BATCH_SIZE, 0);
 
-        size_t *preds = (size_t*)stack_alloc(global_stack, sizeof(size_t) * BATCH_SIZE, 1);
+        size_t *preds = (size_t*)obs_alloc(global_stack, sizeof(size_t) * BATCH_SIZE, 1);
     
         while(dloader_iterate(image_loader)) {
             const matrix *output = nn_model_predict(global_stack, model, image_loader->curr_input);
@@ -207,9 +211,8 @@ int main() { //NOSONAR
 
                 printf("------------------------------------------\n");
 
-                const matrix *image_view = get_image_view(global_stack, image_set, image_index);
-                // Remember to update its content when using tmux in your terminal. XD
-                draw_image(image_view, 32, 32, 3);
+                const matrix *image_view = utils_get_image_view(global_stack, image_set, image_index);
+                utils_draw_image(image_view, 32, 32, 3); // Remember to update its content when not using tmux. 💀
 
                 printf(
                     "图片序号: %2zu | 预测结果: [%s]\n",
@@ -223,8 +226,8 @@ int main() { //NOSONAR
         printf("🤣👉🤡\n");
     }
 
-    stack_destroy(global_stack);
-    stack_destroy_markers();
+    obs_destroy(global_stack);
+    obs_destroy_all_markers();
 
     return 0;
 }

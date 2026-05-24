@@ -1,9 +1,11 @@
 #include "utils.h"
 
+#include <math.h>
 #include <stb/stb_image.h>
 #include <stb/stb_image_write.h>
+#include <sys/random.h>
 
-void get_system_entropy(void *buffer, size_t size) {
+void utils_get_system_entropy(void *buffer, size_t size) {
     if (getrandom(buffer, size, 0) < 0) {
         FILE *file = fopen("/dev/urandom", "rb");
         
@@ -18,7 +20,7 @@ void get_system_entropy(void *buffer, size_t size) {
     }
 }
 
-void debug_grad_stats(const nn_model *model, const char *phase) {
+void utils_debug_grad_stats(const nn_model *model, const char *phase) {
     printf("\n[%s] Gradient Statistics:\n", phase);
 
     float total_grad_norm = 0.0F;
@@ -70,12 +72,12 @@ void debug_grad_stats(const nn_model *model, const char *phase) {
     );
 }
 
-matrix *_get_image_view1(stack *stk, const matrix *src, size_t index) {
+matrix *_get_image_view1(obs *stk, const matrix *src, size_t index) {
     if (src == NULL || index >= src->rows) {
         return NULL;
     }
 
-    matrix *view = (matrix*)stack_alloc(stk, sizeof(matrix), 1);
+    matrix *view = (matrix*)obs_alloc(stk, sizeof(matrix), 1);
     
     view->rows = 1;
     view->cols = src->cols; 
@@ -85,12 +87,12 @@ matrix *_get_image_view1(stack *stk, const matrix *src, size_t index) {
     return view;
 }
 
-matrix *_get_image_view2(stack *stk, const dataset *src, size_t index) {
+matrix *_get_image_view2(obs *stk, const dataset *src, size_t index) {
     if (src == NULL || index >= src->images->rows) {
         return NULL;
     }
 
-    matrix *view = (matrix*)stack_alloc(stk, sizeof(matrix), 1);
+    matrix *view = (matrix*)obs_alloc(stk, sizeof(matrix), 1);
     
     view->rows = 1;
     view->cols = src->images->cols; 
@@ -100,12 +102,12 @@ matrix *_get_image_view2(stack *stk, const dataset *src, size_t index) {
     return view;
 }
 
-matrix *_get_image_view3(stack *stk, const dataloader *src, size_t index) {
+matrix *_get_image_view3(obs *stk, const dataloader *src, size_t index) {
     if (src == NULL || index >= src->images->rows) {
         return NULL;
     }
 
-    matrix *view = (matrix*)stack_alloc(stk, sizeof(matrix), 1);
+    matrix *view = (matrix*)obs_alloc(stk, sizeof(matrix), 1);
     
     view->rows = 1;
     view->cols = src->images->cols; 
@@ -115,7 +117,7 @@ matrix *_get_image_view3(stack *stk, const dataloader *src, size_t index) {
     return view;
 }
 
-void draw_image(const matrix *image, size_t w, size_t h, size_t c) {
+void utils_draw_image(const matrix *image, size_t w, size_t h, size_t c) {
     size_t image_size = w * h * c;
 
     if (image == NULL) {

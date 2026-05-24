@@ -1,5 +1,6 @@
-#include "stack.h"
+#include "obs.h"
 
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -15,8 +16,8 @@ static void _obstack_alloc_failed_handler(void) {
     exit(EXIT_FAILURE); 
 }
 
-stack *stack_create() {
-    stack *stk = (stack *)malloc(sizeof(stack));
+obs *obs_create() {
+    obs *stk = (obs *)malloc(sizeof(obs));
     if (stk == NULL) {
         return NULL;
     }
@@ -33,14 +34,14 @@ stack *stack_create() {
     return stk;
 }
 
-void stack_destroy(stack *stk) {
+void obs_destroy(obs *stk) {
     if (stk) {
         obstack_free(stk, NULL); 
         free(stk);
     }
 }
 
-void *stack_alloc(stack *stk, size_t size, bool clear) {
+void *obs_alloc(obs *stk, size_t size, bool clear) {
     void *ptr = obstack_alloc(stk, size);
     
     if (ptr && clear) {
@@ -50,11 +51,11 @@ void *stack_alloc(stack *stk, size_t size, bool clear) {
     return ptr;
 }
 
-void stack_rollback(stack *stk, size_t pos) {
+void obs_rollback(obs *stk, size_t pos) {
     obstack_free(stk, (void *)pos);
 }
 
-static THREAD_LOCAL stack *s_stack_markers[2] = { NULL, NULL };
+static THREAD_LOCAL obs *s_stack_markers[2] = { NULL, NULL };
 
 static pthread_key_t s_stack_key;
 static pthread_once_t s_key_once = PTHREAD_ONCE_INIT;
@@ -62,7 +63,7 @@ static pthread_once_t s_key_once = PTHREAD_ONCE_INIT;
 static void _bro_im_confused(void *ptr) { // NOSONAR
     for (int i = 0; i < 2; i++) {
         if (s_stack_markers[i] != NULL) {
-            stack_destroy(s_stack_markers[i]);
+            obs_destroy(s_stack_markers[i]);
             s_stack_markers[i] = NULL;
         }
     }
@@ -74,7 +75,7 @@ static void _i_used_gemini(void) {
     }
 }
 
-stack_marker stack_get_marker(stack **conflicts, size_t num_conflicts) {
+obs_marker obs_get_marker(obs **conflicts, size_t num_conflicts) {
     pthread_once(&s_key_once, _i_used_gemini);
 
     int scratch_index = -1;
@@ -100,14 +101,14 @@ stack_marker stack_get_marker(stack **conflicts, size_t num_conflicts) {
     }
 
     if (s_stack_markers[scratch_index] == NULL) {
-        s_stack_markers[scratch_index] = stack_create();
+        s_stack_markers[scratch_index] = obs_create();
         
         pthread_setspecific(s_stack_key, s_stack_markers[scratch_index]);
     }
 
-    stack *stk = s_stack_markers[scratch_index];
+    obs *stk = s_stack_markers[scratch_index];
     
-    stack_marker marker = {
+    obs_marker marker = {
         .stk = stk,
         .pos = (size_t)obstack_alloc(stk, 0) 
     };
@@ -115,10 +116,10 @@ stack_marker stack_get_marker(stack **conflicts, size_t num_conflicts) {
     return marker;
 }
 
-void stack_drop_marker(stack_marker scratch) {
-    stack_rollback(scratch.stk, scratch.pos);
+void obs_drop_marker(obs_marker scratch) {
+    obs_rollback(scratch.stk, scratch.pos);
 }
 
-void stack_destroy_markers() {
+void obs_destroy_all_markers() {
     _bro_im_confused(NULL);
 }

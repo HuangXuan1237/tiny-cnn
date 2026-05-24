@@ -1,12 +1,9 @@
 #pragma once
 
-#include "stack.h"
-#include "matrix.h"
-#include "pcg32.h" // IWYU pragma: export
+#include <stdint.h>
 
-#include <dirent.h>
-#include <math.h> // IWYU pragma: export
-#include <omp.h>
+#include "obs.h"
+#include "matrix.h"
 
 #define RESIZE(w, h) \
     _pack_uint16_by2(w, h, _RESIZE)
@@ -16,6 +13,8 @@
 
 #define RANDOM_CROP(padding) \
     _pack_uint8(padding, _RANDOM_CROP)
+
+#define H(x) size_t(x)
 
 typedef enum data_source {
     MNIST,
@@ -32,7 +31,7 @@ typedef enum data_tranforms {
 } data_tranforms;
 
 typedef struct dataset {
-    stack *stk;
+    obs *stk;
 
     matrix *images;
     matrix *labels;
@@ -75,17 +74,15 @@ uint64_t _pack_uint16_by2(uint16_t value1, uint16_t value2, uint8_t flag);
 uint64_t _pack_float(float value, uint8_t flag);
 uint64_t _pack_uint8(uint8_t value, uint8_t flag);
 
-dataset *dset_create(stack *stk);
-
-bool dset_load(dataset *train_ds, dataset *val_ds, data_source src, uint32_t transfroms);
+dataset *dset_create(obs *stk);
 
 bool dset_load_cifar10(dataset *train_ds, dataset *val_ds, uint64_t transforms);
 
 size_t dset_load_image_folder(dataset *ds, const char *folder_path, uint64_t transforms);
 
-dataset *dset_subset(stack *stk, const dataset *ds, size_t class_count, const int *selected_classes);
+dataset *dset_subset(obs *stk, const dataset *ds, size_t class_count, const int *selected_classes);
 
-dataloader *dloader_create(stack *stk, const dataset *ds, size_t batch_size, bool shuffle);
+dataloader *dloader_create(obs *stk, const dataset *ds, size_t batch_size, bool shuffle);
 
 void dloader_apply_label_smoothing(dataloader *loader, float smoothing, size_t num_classes);
 
