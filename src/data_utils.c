@@ -6,7 +6,7 @@
 #include <stb/stb_image.h>
 #include <stb/stb_image_write.h>
 
-#include "obs.h"
+#include "arena.h"
 #include "pcg32.h"
 
 #define CIFAR10_W 32  
@@ -58,10 +58,10 @@ static uint16_t _unpack_uint16_2(uint64_t packed) {
     return (uint16_t)(packed >> 48);
 }
 
-dataset *dset_subset(obs *stk, const dataset *ds, size_t num_selected, const int *selected_classes) {
-    obs_marker scratch = obs_get_marker(&stk, 1);
+dataset *dset_subset(arena *ar, const dataset *ds, size_t num_selected, const int *selected_classes) {
+    arena_marker scratch = arena_get_marker(&ar, 1);
 
-    int *class_map = (int*)obs_alloc(scratch.stk, sizeof(int)*ds->t, 1);
+    int *class_map = (int*)arena_alloc(scratch.ar, sizeof(int)*ds->t, 1);
 
     for (size_t i = 0; i < ds->t; i++) {
         class_map[i] = -1; 
@@ -102,12 +102,12 @@ dataset *dset_subset(obs *stk, const dataset *ds, size_t num_selected, const int
     }
 
     if (selected_train_rows == 0) {
-        obs_drop_marker(scratch);
+        arena_drop_marker(scratch);
         return NULL;
     }
 
-    matrix *new_images = mat_create(stk, selected_train_rows, image_size);
-    matrix *new_labels = mat_create(stk, selected_train_rows, new_label_size);
+    matrix *new_images = mat_create(ar, selected_train_rows, image_size);
+    matrix *new_labels = mat_create(ar, selected_train_rows, new_label_size);
 
     size_t new_index = 0;
     for (size_t i = 0; i < ds_size; i++) {
@@ -137,7 +137,7 @@ dataset *dset_subset(obs *stk, const dataset *ds, size_t num_selected, const int
         }
     }
 
-    dataset *new_ds = (dataset*)obs_alloc(stk, sizeof(dataset), 1);
+    dataset *new_ds = (dataset*)arena_alloc(ar, sizeof(dataset), 1);
 
     new_ds->images = new_images;
     new_ds->labels = new_labels;
@@ -147,15 +147,15 @@ dataset *dset_subset(obs *stk, const dataset *ds, size_t num_selected, const int
     new_ds->c = ds->c;
     new_ds->t = num_selected;
 
-    obs_drop_marker(scratch);
+    arena_drop_marker(scratch);
 
     return new_ds;
 }
 
-dataset *dset_create(obs *stk) {
-    dataset *ds = (dataset*)obs_alloc(stk, sizeof(dataset), 1);
+dataset *dset_create(arena *ar) {
+    dataset *ds = (dataset*)arena_alloc(ar, sizeof(dataset), 1);
 
-    ds->stk = stk;
+    ds->ar = ar;
 
     return ds;
 }
@@ -168,14 +168,14 @@ bool dset_load_cifar10(dataset *train_ds, dataset *val_ds, uint64_t transforms) 
     const char *path00 = "../data/cifar10/train/train_images.mat";
     const char *path01 = "../data/cifar10/train/train_labels.mat";    
 
-    train_ds->images = mat_create(train_ds->stk, CIFAR10_T_SIZE, image_size);
-    train_ds->labels = mat_create(train_ds->stk, CIFAR10_T_SIZE, label_size);
+    train_ds->images = mat_create(train_ds->ar, CIFAR10_T_SIZE, image_size);
+    train_ds->labels = mat_create(train_ds->ar, CIFAR10_T_SIZE, label_size);
 
     mat_load(train_ds->images, CIFAR10_T_SIZE, image_size, path00);
     mat_load(train_ds->labels, CIFAR10_T_SIZE, label_size, path01);
 
-    obs_marker marker = obs_get_marker(NULL, 0);
-    float *temp_mem = (float*)obs_alloc(marker.stk, sizeof(float) * image_size, 0);
+    arena_marker marker = arena_get_marker(NULL, 0);
+    float *temp_mem = (float*)arena_alloc(marker.ar, sizeof(float) * image_size, 0);
 
     for (size_t i = 0; i < CIFAR10_T_SIZE; i++) {
         float *row = train_ds->images->data + i * image_size;
@@ -197,8 +197,8 @@ bool dset_load_cifar10(dataset *train_ds, dataset *val_ds, uint64_t transforms) 
     const char *path10 = "../data/cifar10/train/val_images.mat";
     const char *path11 = "../data/cifar10/train/val_labels.mat";
 
-    val_ds->images = mat_create(val_ds->stk, CIFAR10_V_SIZE, image_size);
-    val_ds->labels = mat_create(val_ds->stk, CIFAR10_V_SIZE, label_size);
+    val_ds->images = mat_create(val_ds->ar, CIFAR10_V_SIZE, image_size);
+    val_ds->labels = mat_create(val_ds->ar, CIFAR10_V_SIZE, label_size);
 
     mat_load(val_ds->images, CIFAR10_V_SIZE, image_size, path10);
     mat_load(val_ds->labels, CIFAR10_V_SIZE, label_size, path11);
@@ -220,7 +220,7 @@ bool dset_load_cifar10(dataset *train_ds, dataset *val_ds, uint64_t transforms) 
     val_ds->c = CIFAR10_C;
     val_ds->t = CIFAR10_T;
 
-    obs_drop_marker(marker);
+    arena_drop_marker(marker);
 
     train_ds->is_normalized = 0;
     train_ds->is_standardized = 0;
@@ -271,7 +271,7 @@ static int _sort_paths(const void *a, const void *b) {
     return strcmp(*(const char **)a, *(const char **)b); // NOSONAR
 }
 
-matrix *_load_image(obs *stk, const char *path, size_t w, size_t h, size_t c) {
+matrix *_load_image(arena *ar, const char *path, size_t w, size_t h, size_t c) {
     int width, height, channels; // NOSONAR
     uint8_t *image_data = stbi_load(path, &width, &height, &channels, 3);
 
@@ -279,7 +279,7 @@ matrix *_load_image(obs *stk, const char *path, size_t w, size_t h, size_t c) {
         return NULL;
     }
 
-    matrix *image = mat_create(stk, 1, w*h*c);
+    matrix *image = mat_create(ar, 1, w*h*c);
 
     for (int hi = 0; hi < h; hi++) {
         for (int wi = 0; wi < w; wi++) {
@@ -319,12 +319,12 @@ matrix *_load_image(obs *stk, const char *path, size_t w, size_t h, size_t c) {
 }
 
 size_t dset_load_image_folder(dataset *ds, const char *folder_path, uint64_t transforms) { // NOSONAR
-    obs_marker scratch = obs_get_marker(&ds->stk, 1);
+    arena_marker scratch = arena_get_marker(&ds->ar, 1);
     size_t ic = 0;
 
     DIR *dir = opendir(folder_path);
     if (dir == NULL) {
-        obs_drop_marker(scratch);
+        arena_drop_marker(scratch);
 
         return 0;
     }
@@ -338,19 +338,19 @@ size_t dset_load_image_folder(dataset *ds, const char *folder_path, uint64_t tra
     closedir(dir);
 
     if (ic == 0) {
-        obs_drop_marker(scratch);
+        arena_drop_marker(scratch);
 
         return 0;
     }
 
-    char **file_paths = (char**)obs_alloc(scratch.stk, sizeof(char*) * ic, 1);
+    char **file_paths = (char**)arena_alloc(scratch.ar, sizeof(char*) * ic, 1);
     size_t index = 0;
 
     dir = opendir(folder_path);
     if (dir) {
         while ((entry = readdir(dir)) != NULL) {
             if (_is_image_exist(entry->d_name)) {
-                char *full_path = (char*)obs_alloc(scratch.stk, 512, 0);
+                char *full_path = (char*)arena_alloc(scratch.ar, 512, 0);
                 snprintf(full_path, 256, "%s/%s", folder_path, entry->d_name);
 
                 file_paths[index++] = full_path;
@@ -375,7 +375,7 @@ size_t dset_load_image_folder(dataset *ds, const char *folder_path, uint64_t tra
 
     size_t image_size = w * h * CIFAR10_C;
 
-    ds->images = mat_create(ds->stk, ic, image_size);
+    ds->images = mat_create(ds->ar, ic, image_size);
     ds->labels = NULL;
     
     ds->size = ic;
@@ -385,8 +385,11 @@ size_t dset_load_image_folder(dataset *ds, const char *folder_path, uint64_t tra
     ds->t = 0;
     
     for (size_t i = 0; i < ic; i++) {
+        arena_marker inner_scratch = arena_get_marker(&scratch.ar, 1);
+        
         const char *path = file_paths[i];
-        const matrix *temp = _load_image(scratch.stk, path, w, h, CIFAR10_C);
+        
+        const matrix *temp = _load_image(inner_scratch.ar, path, w, h, CIFAR10_C);
         
         if (temp != NULL) {
             memcpy(
@@ -395,7 +398,10 @@ size_t dset_load_image_folder(dataset *ds, const char *folder_path, uint64_t tra
                 image_size * sizeof(float)
             );   
         }
+        
+        arena_drop_marker(inner_scratch);
     } 
+    // ---------------------------------------------------------
 
     ds->is_normalized = flags & NORMALIZE;
     ds->is_standardized = flags & STANDARDIZE;
@@ -411,7 +417,7 @@ size_t dset_load_image_folder(dataset *ds, const char *folder_path, uint64_t tra
         ds->crop_padding = (size_t)_unpack_uint8(transforms);
     }
 
-    obs_drop_marker(scratch);
+    arena_drop_marker(scratch);
     
     // printf(
     //     "TRANSFORMS:\n"
@@ -431,8 +437,8 @@ size_t dset_load_image_folder(dataset *ds, const char *folder_path, uint64_t tra
 }
 
 // Spent a long time debugging this section. T_T
-dataloader *dloader_create(obs *stk, const dataset *ds, size_t batch_size, bool shuffle) { // NOSONAR
-    dataloader *loader = (dataloader*)obs_alloc(stk, sizeof(dataloader), 1);
+dataloader *dloader_create(arena *ar, const dataset *ds, size_t batch_size, bool shuffle) { // NOSONAR
+    dataloader *loader = (dataloader*)arena_alloc(ar, sizeof(dataloader), 1);
 
     size_t ds_size = ds->size;
     size_t image_size = ds->w * ds->h * ds->c;
@@ -441,12 +447,12 @@ dataloader *dloader_create(obs *stk, const dataset *ds, size_t batch_size, bool 
     size_t batch_count = (ds_size + batch_size - 1) / batch_size;
     size_t padded_size = batch_count * batch_size;
 
-    loader->images = mat_create(stk, padded_size, image_size);
+    loader->images = mat_create(ar, padded_size, image_size);
     loader->images->rows = ds_size; 
 
     loader->labels = NULL;
     if (ds->labels != NULL) {
-        loader->labels = mat_create(stk, padded_size, label_size);
+        loader->labels = mat_create(ar, padded_size, label_size);
     }
 
     loader->c = ds->c;
@@ -458,11 +464,11 @@ dataloader *dloader_create(obs *stk, const dataset *ds, size_t batch_size, bool 
     loader->hflip_prob = ds->hflip_prob;
     loader->crop_padding = ds->crop_padding;
 
-    loader->crop_buffer = (float*)obs_alloc(
-        stk, sizeof(float)*batch_size*ds->c*ds->h*ds->w, 0
+    loader->crop_buffer = (float*)arena_alloc(
+        ar, sizeof(float)*batch_size*ds->c*ds->h*ds->w, 0
     );
 
-    size_t *p = (size_t*)obs_alloc(stk, sizeof(size_t) * ds_size, 1);
+    size_t *p = (size_t*)arena_alloc(ar, sizeof(size_t) * ds_size, 1);
     for (size_t i = 0; i < ds_size; i++) {
         p[i] = i;
     }
@@ -527,8 +533,8 @@ dataloader *dloader_create(obs *stk, const dataset *ds, size_t batch_size, bool 
         }
     }
 
-    loader->curr_input = mat_create(stk, batch_size, image_size);
-    loader->curr_target = mat_create(stk, batch_size, label_size);
+    loader->curr_input = mat_create(ar, batch_size, image_size);
+    loader->curr_target = mat_create(ar, batch_size, label_size);
 
     loader->batch_size = batch_size;
     loader->batch_count = batch_count;

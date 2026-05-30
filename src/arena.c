@@ -1,4 +1,4 @@
-#include "obs.h"
+#include "arena.h"
 
 #include <pthread.h>
 #include <stdio.h>
@@ -16,33 +16,33 @@ static void _obstack_alloc_failed_handler(void) {
     exit(EXIT_FAILURE); 
 }
 
-obs *obs_create() {
-    obs *stk = (obs *)malloc(sizeof(obs));
-    if (stk == NULL) {
+arena *arena_create() {
+    arena *ar = (arena *)malloc(sizeof(arena));
+    if (ar == NULL) {
         return NULL;
     }
 
     obstack_alloc_failed_handler = _obstack_alloc_failed_handler;
 
-    if (obstack_init(stk) == 0) {
-        free(stk);
+    if (obstack_init(ar) == 0) {
+        free(ar);
         return NULL;
     }
 
-    obstack_alignment_mask(stk) = ARENA_ALIGNMENT - 1;
+    obstack_alignment_mask(ar) = ARENA_ALIGNMENT - 1;
 
-    return stk;
+    return ar;
 }
 
-void obs_destroy(obs *stk) {
-    if (stk) {
-        obstack_free(stk, NULL); 
-        free(stk);
+void arena_destroy(arena *ar) {
+    if (ar) {
+        obstack_free(ar, NULL); 
+        free(ar);
     }
 }
 
-void *obs_alloc(obs *stk, size_t size, bool clear) {
-    void *ptr = obstack_alloc(stk, size);
+void *arena_alloc(arena *ar, size_t size, bool clear) {
+    void *ptr = obstack_alloc(ar, size);
     
     if (ptr && clear) {
         memset(ptr, 0, size);
@@ -51,31 +51,31 @@ void *obs_alloc(obs *stk, size_t size, bool clear) {
     return ptr;
 }
 
-void obs_rollback(obs *stk, size_t pos) {
-    obstack_free(stk, (void *)pos);
+void arena_rollback(arena *ar, size_t pos) {
+    obstack_free(ar, (void *)pos);
 }
 
-static THREAD_LOCAL obs *s_stack_markers[2] = { NULL, NULL };
+static THREAD_LOCAL arena *s_stack_markers[2] = { NULL, NULL };
 
 static pthread_key_t s_stack_key;
 static pthread_once_t s_key_once = PTHREAD_ONCE_INIT;
 
-static void _bro_im_confused(void *ptr) { // NOSONAR
+static void _bro_i_am_confused(void *ptr) { // NOSONAR
     for (int i = 0; i < 2; i++) {
         if (s_stack_markers[i] != NULL) {
-            obs_destroy(s_stack_markers[i]);
+            arena_destroy(s_stack_markers[i]);
             s_stack_markers[i] = NULL;
         }
     }
 }
 
 static void _i_used_gemini(void) {
-    if (pthread_key_create(&s_stack_key, _bro_im_confused) != 0) {
+    if (pthread_key_create(&s_stack_key, _bro_i_am_confused) != 0) {
         fprintf(stderr, "🤣👉🤡\n");
     }
 }
 
-obs_marker obs_get_marker(obs **conflicts, size_t num_conflicts) {
+arena_marker arena_get_marker(arena **conflicts, size_t num_conflicts) {
     pthread_once(&s_key_once, _i_used_gemini);
 
     int scratch_index = -1;
@@ -101,25 +101,25 @@ obs_marker obs_get_marker(obs **conflicts, size_t num_conflicts) {
     }
 
     if (s_stack_markers[scratch_index] == NULL) {
-        s_stack_markers[scratch_index] = obs_create();
+        s_stack_markers[scratch_index] = arena_create();
         
         pthread_setspecific(s_stack_key, s_stack_markers[scratch_index]);
     }
 
-    obs *stk = s_stack_markers[scratch_index];
+    arena *ar = s_stack_markers[scratch_index];
     
-    obs_marker marker = {
-        .stk = stk,
-        .pos = (size_t)obstack_alloc(stk, 0) 
+    arena_marker marker = {
+        .ar = ar,
+        .pos = (size_t)obstack_alloc(ar, 0) 
     };
 
     return marker;
 }
 
-void obs_drop_marker(obs_marker scratch) {
-    obs_rollback(scratch.stk, scratch.pos);
+void arena_drop_marker(arena_marker scratch) {
+    arena_rollback(scratch.ar, scratch.pos);
 }
 
-void obs_destroy_all_markers() {
-    _bro_im_confused(NULL);
+void arena_destroy_all_markers() {
+    _bro_i_am_confused(NULL);
 }

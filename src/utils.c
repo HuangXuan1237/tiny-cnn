@@ -72,12 +72,12 @@ void utils_debug_grad_stats(const nn_model *model, const char *phase) {
     );
 }
 
-matrix *_get_image_view1(obs *stk, const matrix *src, size_t index) {
+matrix *_get_image_view1(arena *ar, const matrix *src, size_t index) {
     if (src == NULL || index >= src->rows) {
         return NULL;
     }
 
-    matrix *view = (matrix*)obs_alloc(stk, sizeof(matrix), 1);
+    matrix *view = (matrix*)arena_alloc(ar, sizeof(matrix), 1);
     
     view->rows = 1;
     view->cols = src->cols; 
@@ -87,12 +87,12 @@ matrix *_get_image_view1(obs *stk, const matrix *src, size_t index) {
     return view;
 }
 
-matrix *_get_image_view2(obs *stk, const dataset *src, size_t index) {
+matrix *_get_image_view2(arena *ar, const dataset *src, size_t index) {
     if (src == NULL || index >= src->images->rows) {
         return NULL;
     }
 
-    matrix *view = (matrix*)obs_alloc(stk, sizeof(matrix), 1);
+    matrix *view = (matrix*)arena_alloc(ar, sizeof(matrix), 1);
     
     view->rows = 1;
     view->cols = src->images->cols; 
@@ -102,12 +102,12 @@ matrix *_get_image_view2(obs *stk, const dataset *src, size_t index) {
     return view;
 }
 
-matrix *_get_image_view3(obs *stk, const dataloader *src, size_t index) {
+matrix *_get_image_view3(arena *ar, const dataloader *src, size_t index) {
     if (src == NULL || index >= src->images->rows) {
         return NULL;
     }
 
-    matrix *view = (matrix*)obs_alloc(stk, sizeof(matrix), 1);
+    matrix *view = (matrix*)arena_alloc(ar, sizeof(matrix), 1);
     
     view->rows = 1;
     view->cols = src->images->cols; 
@@ -117,6 +117,7 @@ matrix *_get_image_view3(obs *stk, const dataloader *src, size_t index) {
     return view;
 }
 
+// 💀
 void utils_draw_image(const matrix *image, size_t w, size_t h, size_t c) {
     size_t image_size = w * h * c;
 
@@ -140,17 +141,20 @@ void utils_draw_image(const matrix *image, size_t w, size_t h, size_t c) {
 
     if (stbi_write_png(temp_file, (int)w, (int)h, (int)c, pixels, (int)(w*c))) {
         char cmd[256];
-        // snprintf( // NOSONAR
-        //     cmd, sizeof(cmd),
-        //     "chafa --dither none --size 20x20 %s",
-        //     temp_file
-        // ); 
-        snprintf(
-            cmd, sizeof(cmd),
-            "chafa --passthrough tmux -f kitty "
-            "--dither none --size 20x20 %s", 
-            temp_file
-        );
+        const char *tmux_env = getenv("TMUX");
+        if (tmux_env != NULL) {
+            snprintf(
+                cmd, sizeof(cmd),
+                "chafa --passthrough tmux -f kitty --dither none --size 20x20 %s", 
+                temp_file
+            );
+        } else {
+            snprintf(
+                cmd, sizeof(cmd),
+                "chafa -f kitty --dither none --size 20x20 %s", 
+                temp_file
+            );
+        }
 
         if (system(cmd) != 0) {
             printf("🤣👉🤡\n");

@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <time.h>
 
-#include "obs.h"
+#include "arena.h"
 #include "data_utils.h"
 #include "matrix.h"
 #include "nn.h"
@@ -16,9 +16,9 @@
 #define EPOCHS 50
 #define LEARNING_RATE 5E-4F
 
-#define PRE_TRAINED 0
-// #define MODEL_PATH "../model/current_best.bin"
-#define MODEL_PATH "../model/test.bin"
+#define PRE_TRAINED 1
+#define MODEL_PATH "../model/current_best.bin"
+// #define MODEL_PATH "../model/test.bin"
 
 const char *CIFAR10_LABELS[10] = {
     "airplane", 
@@ -33,29 +33,29 @@ const char *CIFAR10_LABELS[10] = {
     "truck"
 };
 
-void cifar10_custom_resnet(obs *stk, nn_model *model) {
-    nn_tensor *input = nn_layer_input(stk, model, 3, 32, 32, BATCH_SIZE);
-    nn_tensor *target = nn_layer_target(stk, model, 1, 1, 10, BATCH_SIZE);
+void resnet_for_cifar10(arena *ar, nn_model *model) {
+    nn_tensor *input = nn_layer_input(ar, model, 3, 32, 32, BATCH_SIZE);
+    nn_tensor *target = nn_layer_target(ar, model, 1, 1, 10, BATCH_SIZE);
 
-    nn_tensor *conv1 = nn_layer_conv2d(stk, model, input, 16, 3, 1, 1);
-    nn_tensor *bn1 = nn_layer_batchnorm2d(stk, model, conv1);
-    nn_tensor *relu1 = nn_layer_relu(stk, model, bn1);
+    nn_tensor *conv1 = nn_layer_conv2d(ar, model, input, 16, 3, 1, 1);
+    nn_tensor *bn1 = nn_layer_batchnorm2d(ar, model, conv1);
+    nn_tensor *relu1 = nn_layer_relu(ar, model, bn1);
 
-    nn_tensor *block1_1 = nn_layer_residual_block(stk, model, relu1, 16, 16, 1);
-    nn_tensor *block1_2 = nn_layer_residual_block(stk, model, block1_1, 16, 16, 1);
+    nn_tensor *block1_1 = nn_layer_residual_block(ar, model, relu1, 16, 16, 1);
+    nn_tensor *block1_2 = nn_layer_residual_block(ar, model, block1_1, 16, 16, 1);
     
-    nn_tensor *block2_1 = nn_layer_residual_block(stk, model, block1_2, 16, 32, 2);
-    nn_tensor *block2_2 = nn_layer_residual_block(stk, model, block2_1, 32, 32, 1);
+    nn_tensor *block2_1 = nn_layer_residual_block(ar, model, block1_2, 16, 32, 2);
+    nn_tensor *block2_2 = nn_layer_residual_block(ar, model, block2_1, 32, 32, 1);
 
-    nn_tensor *block3_1 = nn_layer_residual_block(stk, model, block2_2, 32, 64, 2);
-    nn_tensor *block3_2 = nn_layer_residual_block(stk, model, block3_1, 64, 64, 1);
+    nn_tensor *block3_1 = nn_layer_residual_block(ar, model, block2_2, 32, 64, 2);
+    nn_tensor *block3_2 = nn_layer_residual_block(ar, model, block3_1, 64, 64, 1);
 
-    nn_tensor *gap = nn_layer_gapool2d(stk, model, block3_2);
-    nn_tensor *dropout = nn_layer_dropout(stk, model, gap, 0.2F);
-    nn_tensor *fc = nn_layer_linear(stk, model, dropout, 10);
+    nn_tensor *gap = nn_layer_gapool2d(ar, model, block3_2);
+    nn_tensor *dropout = nn_layer_dropout(ar, model, gap, 0.2F);
+    nn_tensor *fc = nn_layer_linear(ar, model, dropout, 10);
 
-    nn_tensor *output = nn_layer_softmax(stk, model, fc);
-    nn_tensor *loss = nn_layer_cross_entropy(stk, model, output, target); // NOSONAR
+    nn_tensor *output = nn_layer_softmax(ar, model, fc);
+    nn_tensor *loss = nn_layer_cross_entropy(ar, model, output, target); // NOSONAR
 }
 
 int main() { //NOSONAR
@@ -67,7 +67,7 @@ int main() { //NOSONAR
     openblas_set_num_threads(1); // Hand over all the threading to OpenMP.
     omp_set_num_threads(8); 
 
-    obs *global_stack = obs_create();
+    arena *global_stack = arena_create();
 
     dataset *the_dataset[2];
     the_dataset[0] = dset_create(global_stack);
@@ -87,7 +87,7 @@ int main() { //NOSONAR
 
     nn_model *model = nn_model_create(global_stack);
     
-    cifar10_custom_resnet(global_stack, model);
+    resnet_for_cifar10(global_stack, model);
     nn_model_compile(global_stack, model);
 
     // -----------------------------------TRAINING----------------------------------- //
@@ -102,8 +102,8 @@ int main() { //NOSONAR
 
         struct timespec start, end; // NOSONAR
         
-        size_t *preds = obs_alloc(global_stack, sizeof(size_t) * BATCH_SIZE, 1);
-        size_t *targets = obs_alloc(global_stack, sizeof(size_t) * BATCH_SIZE, 1);
+        size_t *preds = arena_alloc(global_stack, sizeof(size_t) * BATCH_SIZE, 1);
+        size_t *targets = arena_alloc(global_stack, sizeof(size_t) * BATCH_SIZE, 1);
 
         for (size_t epoch = 0; epoch < EPOCHS; epoch++) {
             clock_gettime(CLOCK_MONOTONIC, &start);
@@ -135,7 +135,7 @@ int main() { //NOSONAR
             dloader_reset(loader[0]);
 
             // -----------------------------------VALIDATION----------------------------------- //
-            size_t num_matched = 0;
+            size_t matched = 0;
             size_t sc = 0;
             
             ema_apply_shadow(ema, model, backup_space);
@@ -148,7 +148,7 @@ int main() { //NOSONAR
 
                 for (size_t i = 0; i < BATCH_SIZE; i++) { // NOSONAR
                     if (preds[i] == targets[i]) {
-                        num_matched++;
+                        matched++;
                     }
                 }
 
@@ -171,7 +171,7 @@ int main() { //NOSONAR
             printf(
                 "\rEPOCH %2zd | AVG LOSS: %.4f | 验证准确率: %.2f%% | 耗时: %.2f 秒\n",
                 epoch+1, epoch_loss / (float)loader[0]->batch_count, 
-                (float)num_matched / (float)sc * 100.0F, elapsed
+                (float)matched / (float)sc * 100.0F, elapsed
             );
         }
         
@@ -195,7 +195,7 @@ int main() { //NOSONAR
 
         dataloader *image_loader = dloader_create(global_stack, image_set, BATCH_SIZE, 0);
 
-        size_t *preds = (size_t*)obs_alloc(global_stack, sizeof(size_t) * BATCH_SIZE, 1);
+        size_t *preds = (size_t*)arena_alloc(global_stack, sizeof(size_t) * BATCH_SIZE, 1);
     
         while(dloader_iterate(image_loader)) {
             const matrix *output = nn_model_predict(global_stack, model, image_loader->curr_input);
@@ -212,7 +212,7 @@ int main() { //NOSONAR
                 printf("------------------------------------------\n");
 
                 const matrix *image_view = utils_get_image_view(global_stack, image_set, image_index);
-                utils_draw_image(image_view, 32, 32, 3); // Remember to update its content when not using tmux. 💀
+                utils_draw_image(image_view, 32, 32, 3); 
 
                 printf(
                     "图片序号: %2zu | 预测结果: [%s]\n",
@@ -226,8 +226,8 @@ int main() { //NOSONAR
         printf("🤣👉🤡\n");
     }
 
-    obs_destroy(global_stack);
-    obs_destroy_all_markers();
+    arena_destroy(global_stack);
+    arena_destroy_all_markers();
 
     return 0;
 }

@@ -11,9 +11,10 @@ add_compile_options(-O3 -flto=auto -mavx2 -mfma)
 # add_compile_options(-fsanitize=address -fno-omit-frame-pointer -g)
 # add_link_options(-fsanitize=address)
 
+find_package(mimalloc REQUIRED)
 find_package(OpenMP REQUIRED)
-find_library(OPENBLAS_LIB NAMES openblas)
 find_library(MATH_LIB m)
+find_library(OPENBLAS_LIB NAMES openblas)
 
 include_directories(include third_party)
 
@@ -29,7 +30,8 @@ add_executable(${PROJECT_NAME} ${SOURCES})
 target_link_libraries(
     tiny-cnn 
     PRIVATE 
-    ${OPENBLAS_LIB} 
-    ${MATH_LIB} 
+    mimalloc 
     OpenMP::OpenMP_C
+    ${OPENBLAS_LIB} 
+    ${MATH_LIB}
 )

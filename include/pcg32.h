@@ -2,7 +2,7 @@
 
 #include <stdint.h>
 
-typedef struct pcg32_state {
+typedef struct {
     uint64_t state;
     uint64_t inc;
 

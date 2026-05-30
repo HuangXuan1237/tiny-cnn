@@ -1,16 +1,16 @@
 #pragma once
 
-#include "obs.h"
+#include "arena.h"
 
 //Row-Major
-typedef struct matrix {
+typedef struct {
     size_t rows;
     size_t cols;
 
     float *data;
 } matrix;
 
-matrix *mat_create(obs *stk, size_t rows, size_t cols);
+matrix *mat_create(arena *ar, size_t rows, size_t cols);
 
 bool mat_load(matrix *mat, size_t rows, size_t cols, const char *filename);
 

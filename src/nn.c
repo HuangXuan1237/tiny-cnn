@@ -12,11 +12,11 @@
 )
 
 nn_tensor* nn_tensor_create(
-    obs* stk, nn_model* model,
+    arena* ar, nn_model* model,
     size_t c, size_t h, size_t w,
     size_t batch_size, uint32_t flags
 ) {
-    nn_tensor* tensor = (nn_tensor*)obs_alloc(stk, sizeof(nn_tensor), 1);
+    nn_tensor* tensor = (nn_tensor*)arena_alloc(ar, sizeof(nn_tensor), 1);
 
     tensor->c = c; 
     tensor->h = h; 
@@ -27,10 +27,10 @@ nn_tensor* nn_tensor_create(
     tensor->op = TENSOR_OP_NONE;
 
     size_t rows = (flags & TENSOR_AS_PARAM) ? 1 : batch_size;
-    tensor->value = mat_create(stk, rows, c * h * w);
+    tensor->value = mat_create(ar, rows, c * h * w);
 
     if (flags & TENSOR_REQUIRES_GRAD) {
-        tensor->grad = mat_create(stk, rows, c * h * w);
+        tensor->grad = mat_create(ar, rows, c * h * w);
     }
 
     if (flags & TENSOR_AS_INPUT) {
@@ -53,7 +53,7 @@ nn_tensor* nn_tensor_create(
 }
 
 static nn_tensor* _nn_tensor_unary_impl( //NOSONAR
-    obs* stk, nn_model* model,
+    arena* ar, nn_model* model,
     nn_tensor* input, size_t c, size_t h, size_t w,
     uint32_t flags, nn_tensor_ops op
 ) {
@@ -62,7 +62,7 @@ static nn_tensor* _nn_tensor_unary_impl( //NOSONAR
     }
 
     size_t batch_size = input->value->rows; 
-    nn_tensor* tensor = nn_tensor_create(stk, model, c, h, w, batch_size, flags);
+    nn_tensor* tensor = nn_tensor_create(ar, model, c, h, w, batch_size, flags);
 
     tensor->op = op;
     tensor->inputs[0] = input;
@@ -71,11 +71,11 @@ static nn_tensor* _nn_tensor_unary_impl( //NOSONAR
 }
 
 nn_tensor* nn_func_dropout(
-    obs* stk, nn_model* model,
+    arena* ar, nn_model* model,
     nn_tensor* input, float p, uint32_t flags
 ) {
     if (p < 0.0f || p >= 1.0f) {
-        return NULL; //无效概率
+        return NULL;
     }
 
     if (input->flags & TENSOR_REQUIRES_GRAD) {
@@ -85,19 +85,19 @@ nn_tensor* nn_func_dropout(
     size_t batch_size = input->value->rows;
     size_t elements = input->c * input->h * input->w;
 
-    nn_tensor* tensor = nn_tensor_create(stk, model, input->c, input->h, input->w, batch_size, flags);
+    nn_tensor* tensor = nn_tensor_create(ar, model, input->c, input->h, input->w, batch_size, flags);
     tensor->op = TENSOR_OP_DROPOUT;
     tensor->inputs[0] = input;
 
     tensor->eps = p;
 
-    tensor->aux = mat_create(stk, batch_size, elements);
+    tensor->aux = mat_create(ar, batch_size, elements);
 
     return tensor;
 }
 
 nn_tensor* nn_func_maxpool2d(
-    obs* stk, nn_model* model,
+    arena* ar, nn_model* model,
     nn_tensor* input, size_t k_size, size_t stride,
     uint32_t flags
 ) {
@@ -106,7 +106,7 @@ nn_tensor* nn_func_maxpool2d(
     size_t out_w = (input->w - k_size) / stride + 1;
 
     nn_tensor* tensor = _nn_tensor_unary_impl(
-        stk, model, input,
+        ar, model, input,
         out_c, out_h, out_w,
         flags, TENSOR_OP_MAXPOOL2D
     );
@@ -119,41 +119,41 @@ nn_tensor* nn_func_maxpool2d(
 }
 
 nn_tensor* nn_func_gapool2d(
-    obs* stk, nn_model* model,
+    arena* ar, nn_model* model,
     nn_tensor* input, uint32_t flags
 ) {
     size_t c = input->c;
 
     return _nn_tensor_unary_impl(
-        stk, model, input,
+        ar, model, input,
         c, 1, 1, flags, TENSOR_OP_GAPOOL2D
     );
 }
 
 nn_tensor* nn_func_relu(
-    obs* stk, nn_model* model,
+    arena* ar, nn_model* model,
     nn_tensor* input, uint32_t flags
 ) {
     return _nn_tensor_unary_impl(
-        stk, model, input,
+        ar, model, input,
         input->c, input->h, input->w,
         flags, TENSOR_OP_RELU
     );
 }
 
 nn_tensor* nn_func_softmax(
-    obs* stk, nn_model* model,
+    arena* ar, nn_model* model,
     nn_tensor* input, uint32_t flags
 ) {
     return _nn_tensor_unary_impl(
-        stk, model, input, 
+        ar, model, input, 
         input->c, input->h, input->w,
         flags, TENSOR_OP_SOFTMAX
     );
 }
 
 static nn_tensor* _nn_tensor_binary_impl( //NOSONAR
-    obs* stk, nn_model* model,
+    arena* ar, nn_model* model,
     nn_tensor* x, nn_tensor* y,
     size_t c, size_t h, size_t w,
     uint32_t flags, nn_tensor_ops op
@@ -164,7 +164,7 @@ static nn_tensor* _nn_tensor_binary_impl( //NOSONAR
     }
 
     size_t batch_size = (x->flags & TENSOR_AS_PARAM) ? y->value->rows : x->value->rows;
-    nn_tensor* tensor = nn_tensor_create(stk, model, c, h, w, batch_size, flags);
+    nn_tensor* tensor = nn_tensor_create(ar, model, c, h, w, batch_size, flags);
 
     tensor->op = op;
     tensor->inputs[0] = x;
@@ -174,7 +174,7 @@ static nn_tensor* _nn_tensor_binary_impl( //NOSONAR
 }
 
 nn_tensor* nn_func_add(
-    obs* stk, nn_model* model,
+    arena* ar, nn_model* model,
     nn_tensor* x, nn_tensor* y, uint32_t flags
 ) {
     if (x->c != y->c) {
@@ -195,14 +195,14 @@ nn_tensor* nn_func_add(
     }
 
     return _nn_tensor_binary_impl(
-        stk, model, x, y,
+        ar, model, x, y,
         x->c, out_h, out_w,
         flags, TENSOR_OP_ADD
     );
 }
 
 nn_tensor* nn_func_conv2d( //NOSONAR
-    obs* stk, nn_model* model,
+    arena* ar, nn_model* model,
     nn_tensor* input, nn_tensor* kernel, 
     size_t k_size, size_t stride, size_t padding,
     uint32_t flags
@@ -221,7 +221,7 @@ nn_tensor* nn_func_conv2d( //NOSONAR
     size_t out_w = (input->w + 2 * padding - k_size) / stride + 1;
 
     nn_tensor* tensor = _nn_tensor_binary_impl(
-        stk, model, input, kernel, 
+        ar, model, input, kernel, 
         out_c, out_h, out_w, 
         flags, TENSOR_OP_CONV2D
     );
@@ -236,7 +236,7 @@ nn_tensor* nn_func_conv2d( //NOSONAR
 }
 
 nn_tensor* nn_func_cross_entropy(
-    obs* stk, nn_model* model,
+    arena* ar, nn_model* model,
     nn_tensor* p, nn_tensor* q, uint32_t flags
 ) {
     size_t p_size = p->c * p->h * p->w;
@@ -252,7 +252,7 @@ nn_tensor* nn_func_cross_entropy(
     }
     
     size_t batch_size = p->value->rows;
-    nn_tensor* tensor = nn_tensor_create(stk, model, 1, 1, 1, batch_size, flags);
+    nn_tensor* tensor = nn_tensor_create(ar, model, 1, 1, 1, batch_size, flags);
     
     tensor->op = TENSOR_OP_CROSS_ENTROPY;
     tensor->inputs[0] = p;
@@ -262,7 +262,7 @@ nn_tensor* nn_func_cross_entropy(
 }
 
 nn_tensor* nn_func_matmul(
-    obs* stk, nn_model* model,
+    arena* ar, nn_model* model,
     nn_tensor* x, nn_tensor* y, uint32_t flags
 ) {    
     size_t x_size = x->c * x->h * x->w;
@@ -278,7 +278,7 @@ nn_tensor* nn_func_matmul(
 
     size_t batch_size = x->value->rows;
     nn_tensor* tensor = nn_tensor_create(
-        stk, model, 1, 1, y->w, batch_size, flags
+        ar, model, 1, 1, y->w, batch_size, flags
     );
 
     tensor->op = TENSOR_OP_MATMUL;
@@ -289,7 +289,7 @@ nn_tensor* nn_func_matmul(
 }
 
 nn_tensor* nn_func_batchnorm2d( //NOSONAR
-    obs* stk, nn_model* model,
+    arena* ar, nn_model* model,
     nn_tensor* input, nn_tensor* gamma, nn_tensor* beta,
     float eps, float momentum,
     uint32_t flags
@@ -305,7 +305,7 @@ nn_tensor* nn_func_batchnorm2d( //NOSONAR
     size_t w = input->w;
     size_t spatial = h * w;
 
-    nn_tensor* tensor = (nn_tensor*)obs_alloc(stk, sizeof(nn_tensor), 1);
+    nn_tensor* tensor = (nn_tensor*)arena_alloc(ar, sizeof(nn_tensor), 1);
 
     tensor->c = c;
     tensor->h = h;
@@ -328,65 +328,65 @@ nn_tensor* nn_func_batchnorm2d( //NOSONAR
     tensor->inputs[1] = gamma;
     tensor->inputs[2] = beta;
 
-    tensor->value = mat_create(stk, batch_size, c * spatial);
+    tensor->value = mat_create(ar, batch_size, c * spatial);
     if (f & TENSOR_REQUIRES_GRAD) {
-        tensor->grad = mat_create(stk, batch_size, c * spatial);
+        tensor->grad = mat_create(ar, batch_size, c * spatial);
     }
 
-    tensor->running_mean = mat_create(stk, 1, c);
+    tensor->running_mean = mat_create(ar, 1, c);
     mat_fill(tensor->running_mean, 0.0f);
-    tensor->running_var = mat_create(stk, 1, c);
+    tensor->running_var = mat_create(ar, 1, c);
     mat_fill(tensor->running_var, 1.0f);
 
-    tensor->aux = mat_create(stk, batch_size, c * spatial);
-    tensor->aux2 = mat_create(stk, 1, c);
+    tensor->aux = mat_create(ar, batch_size, c * spatial);
+    tensor->aux2 = mat_create(ar, 1, c);
 
     return tensor;
 }
 
 nn_tensor *nn_layer_input(
-    obs* stk, nn_model* model,
+    arena* ar, nn_model* model,
     size_t c, size_t h, size_t w,
     size_t batch_size
 ) {
-    return nn_tensor_create(stk, model, c, h, w, batch_size, TENSOR_AS_INPUT);
+    return nn_tensor_create(ar, model, c, h, w, batch_size, TENSOR_AS_INPUT);
 }
 
 nn_tensor *nn_layer_target(
-    obs* stk, nn_model* model,
+    arena* ar, nn_model* model,
     size_t c, size_t h, size_t w,
     size_t batch_size
 ) {
-    return nn_tensor_create(stk, model, c, h, w, batch_size, TENSOR_AS_TARGET);
+    return nn_tensor_create(ar, model, c, h, w, batch_size, TENSOR_AS_TARGET);
 }
 
 nn_tensor *nn_layer_batchnorm2d(
-    obs *stk, nn_model *model, nn_tensor *input
+    arena *ar, nn_model *model, nn_tensor *input
 ) {
     size_t oc = input->c; 
 
-    nn_tensor *gamma = nn_tensor_create(stk, model, oc, 1, 1, 1, TENSOR_REQUIRES_GRAD|TENSOR_AS_PARAM);
+    nn_tensor *gamma = nn_tensor_create(ar, model, oc, 1, 1, 1, TENSOR_REQUIRES_GRAD|TENSOR_AS_PARAM);
     mat_fill(gamma->value, 1.0f);
 
-    nn_tensor *beta = nn_tensor_create(stk, model, oc, 1, 1, 1, TENSOR_REQUIRES_GRAD|TENSOR_AS_PARAM);
+    nn_tensor *beta = nn_tensor_create(ar, model, oc, 1, 1, 1, TENSOR_REQUIRES_GRAD|TENSOR_AS_PARAM);
     mat_fill(beta->value, 0.0f);
 
-    return nn_func_batchnorm2d(stk, model, input, gamma, beta, 1e-5f, 0.9f, 0);
+    return nn_func_batchnorm2d(ar, model, input, gamma, beta, 1e-5f, 0.9f, 0);
 }
 
 nn_tensor *nn_layer_conv2d(
-    obs *stk, nn_model *model,
+    arena *ar, nn_model *model,
     nn_tensor *input, 
     size_t out_channels, size_t k_size,
     size_t stride, size_t padding
 ) {
     size_t fi = input->c * k_size * k_size;
     nn_tensor *w = nn_tensor_create(
-        stk, model, out_channels, input->c, k_size*k_size, 1,
+        ar, model, out_channels, input->c, k_size*k_size, 1,
         TENSOR_REQUIRES_GRAD|TENSOR_AS_PARAM
     );
     nn_tensor *b = nn_tensor_create(
-        stk, model, out_channels, 1, 1, 1,
+        ar, model, out_channels, 1, 1, 1,
         TENSOR_REQUIRES_GRAD|TENSOR_AS_PARAM
     );
 
@@ -400,41 +400,41 @@ nn_tensor *nn_layer_conv2d(
     mat_fill(b->value, 0.0f);
 
     nn_tensor *conv = nn_func_conv2d(
-        stk, model, input, w, k_size, stride, padding, 0
+        ar, model, input, w, k_size, stride, padding, 0
     );
 
-    return nn_func_add(stk, model, conv, b, 0);
+    return nn_func_add(ar, model, conv, b, 0);
 }
 
 nn_tensor *nn_layer_cross_entropy(
-    obs *stk, nn_model *model, nn_tensor *pred, nn_tensor *target
+    arena *ar, nn_model *model, nn_tensor *pred, nn_tensor *target
 ) {
-    return nn_func_cross_entropy(stk, model, pred, target, TENSOR_AS_LOSS);
+    return nn_func_cross_entropy(ar, model, pred, target, TENSOR_AS_LOSS);
 }
 
 nn_tensor *nn_layer_dropout(
-    obs *stk, nn_model *model, nn_tensor *input, float prob
+    arena *ar, nn_model *model, nn_tensor *input, float prob
 ) {
-    return nn_func_dropout(stk, model, input, prob, 0);
+    return nn_func_dropout(ar, model, input, prob, 0);
 }
 
 nn_tensor *nn_layer_gapool2d(
-    obs *stk, nn_model *model, nn_tensor *input
+    arena *ar, nn_model *model, nn_tensor *input
 ) {
-    return nn_func_gapool2d(stk, model, input, 0);
+    return nn_func_gapool2d(ar, model, input, 0);
 }
 
 nn_tensor *nn_layer_linear(
-    obs *stk, nn_model *model, nn_tensor *input, size_t out_features
+    arena *ar, nn_model *model, nn_tensor *input, size_t out_features
 ) {
     size_t fs = input->c * input->h * input->w;
 
     nn_tensor *w = nn_tensor_create(
-        stk, model, 1, fs, out_features, 1,
+        ar, model, 1, fs, out_features, 1,
         TENSOR_REQUIRES_GRAD|TENSOR_AS_PARAM
     );
     nn_tensor *b = nn_tensor_create(
-        stk, model, 1, 1, out_features, 1,
+        ar, model, 1, 1, out_features, 1,
         TENSOR_REQUIRES_GRAD|TENSOR_AS_PARAM
     );
 
@@ -447,87 +447,87 @@ nn_tensor *nn_layer_linear(
 
     mat_fill(b->value, 0.0f); 
 
-    nn_tensor *z = nn_func_matmul(stk, model, input, w, 0);
+    nn_tensor *z = nn_func_matmul(ar, model, input, w, 0);
 
-    return nn_func_add(stk, model, z, b, 0);
+    return nn_func_add(ar, model, z, b, 0);
 }
 
 nn_tensor *nn_layer_maxpool2d(
-    obs *stk, nn_model * model, nn_tensor *input,
+    arena *ar, nn_model * model, nn_tensor *input,
     size_t k_size, size_t stride
 ) {
-    return nn_func_maxpool2d(stk, model, input, k_size, stride, 0);
+    return nn_func_maxpool2d(ar, model, input, k_size, stride, 0);
 }
 
-nn_tensor *nn_layer_relu(obs *stk, nn_model *model, nn_tensor *input) {
-    return nn_func_relu(stk, model, input, 0);
+nn_tensor *nn_layer_relu(arena *ar, nn_model *model, nn_tensor *input) {
+    return nn_func_relu(ar, model, input, 0);
 }
 
 nn_tensor* nn_layer_residual_block(
-    obs* stk, nn_model* model,
+    arena* ar, nn_model* model,
     nn_tensor* input,
     size_t in_planes, size_t out_planes,
     size_t stride
 ) {
-    nn_tensor* w1 = nn_tensor_create(stk, model, out_planes, in_planes, 9, 1, TENSOR_REQUIRES_GRAD | TENSOR_AS_PARAM);
+    nn_tensor* w1 = nn_tensor_create(ar, model, out_planes, in_planes, 9, 1, TENSOR_REQUIRES_GRAD | TENSOR_AS_PARAM);
     float std1 = sqrtf(2.0f / ((float)in_planes * 9));
     size_t total1 = w1->value->rows * w1->value->cols;
     for (size_t idx = 0; idx < total1; idx++) {
         w1->value->data[idx] = pcg32_gaussian() * std1;
     }
 
-    nn_tensor* conv1 = nn_func_conv2d(stk, model, input, w1, 3, stride, 1, 0);
+    nn_tensor* conv1 = nn_func_conv2d(ar, model, input, w1, 3, stride, 1, 0);
 
-    nn_tensor* gamma1 = nn_tensor_create(stk, model, out_planes, 1, 1, 1, TENSOR_REQUIRES_GRAD | TENSOR_AS_PARAM);
+    nn_tensor* gamma1 = nn_tensor_create(ar, model, out_planes, 1, 1, 1, TENSOR_REQUIRES_GRAD | TENSOR_AS_PARAM);
     mat_fill(gamma1->value, 1.0f);
-    nn_tensor* beta1 = nn_tensor_create(stk, model, out_planes, 1, 1, 1, TENSOR_REQUIRES_GRAD | TENSOR_AS_PARAM);
+    nn_tensor* beta1 = nn_tensor_create(ar, model, out_planes, 1, 1, 1, TENSOR_REQUIRES_GRAD | TENSOR_AS_PARAM);
     mat_fill(beta1->value, 0.0f);
-    nn_tensor* bn1 = nn_func_batchnorm2d(stk, model, conv1, gamma1, beta1, 1e-5f, 0.9f, 0);
-    nn_tensor* relu1 = nn_func_relu(stk, model, bn1, 0);
+    nn_tensor* bn1 = nn_func_batchnorm2d(ar, model, conv1, gamma1, beta1, 1e-5f, 0.9f, 0);
+    nn_tensor* relu1 = nn_func_relu(ar, model, bn1, 0);
 
-    nn_tensor* w2 = nn_tensor_create(stk, model, out_planes, out_planes, 9, 1, TENSOR_REQUIRES_GRAD | TENSOR_AS_PARAM);
+    nn_tensor* w2 = nn_tensor_create(ar, model, out_planes, out_planes, 9, 1, TENSOR_REQUIRES_GRAD | TENSOR_AS_PARAM);
     float std2 = sqrtf(2.0f / ((float)out_planes * 9));
     size_t total2 = w2->value->rows * w2->value->cols;
     for (size_t idx = 0; idx < total2; idx++) {
         w2->value->data[idx] = pcg32_gaussian() * std2;
     }
 
-    nn_tensor* conv2 = nn_func_conv2d(stk, model, relu1, w2, 3, 1, 1, 0);
+    nn_tensor* conv2 = nn_func_conv2d(ar, model, relu1, w2, 3, 1, 1, 0);
 
-    nn_tensor* gamma2 = nn_tensor_create(stk, model, out_planes, 1, 1, 1, TENSOR_REQUIRES_GRAD | TENSOR_AS_PARAM);
+    nn_tensor* gamma2 = nn_tensor_create(ar, model, out_planes, 1, 1, 1, TENSOR_REQUIRES_GRAD | TENSOR_AS_PARAM);
     mat_fill(gamma2->value, 1.0f);
-    nn_tensor* beta2 = nn_tensor_create(stk, model, out_planes, 1, 1, 1, TENSOR_REQUIRES_GRAD | TENSOR_AS_PARAM);
+    nn_tensor* beta2 = nn_tensor_create(ar, model, out_planes, 1, 1, 1, TENSOR_REQUIRES_GRAD | TENSOR_AS_PARAM);
     mat_fill(beta2->value, 0.0f);
-    nn_tensor* bn2 = nn_func_batchnorm2d(stk, model, conv2, gamma2, beta2, 1e-5f, 0.9f, 0);
+    nn_tensor* bn2 = nn_func_batchnorm2d(ar, model, conv2, gamma2, beta2, 1e-5f, 0.9f, 0);
 
     nn_tensor* shortcut;
     if (stride != 1 || in_planes != out_planes) {
-        nn_tensor* w_proj = nn_tensor_create(stk, model, out_planes, in_planes, 1, 1, TENSOR_REQUIRES_GRAD | TENSOR_AS_PARAM);
+        nn_tensor* w_proj = nn_tensor_create(ar, model, out_planes, in_planes, 1, 1, TENSOR_REQUIRES_GRAD | TENSOR_AS_PARAM);
         float std_proj = sqrtf(2.0f / (float)in_planes);
         size_t total_proj = w_proj->value->rows * w_proj->value->cols;
         for (size_t idx = 0; idx < total_proj; idx++) {
             w_proj->value->data[idx] = pcg32_gaussian() * std_proj;
         }
 
-        nn_tensor* conv_proj = nn_func_conv2d(stk, model, input, w_proj, 1, stride, 0, 0);
+        nn_tensor* conv_proj = nn_func_conv2d(ar, model, input, w_proj, 1, stride, 0, 0);
 
-        nn_tensor* gamma_proj = nn_tensor_create(stk, model, out_planes, 1, 1, 1, TENSOR_REQUIRES_GRAD | TENSOR_AS_PARAM);
+        nn_tensor* gamma_proj = nn_tensor_create(ar, model, out_planes, 1, 1, 1, TENSOR_REQUIRES_GRAD | TENSOR_AS_PARAM);
         mat_fill(gamma_proj->value, 1.0f);
-        nn_tensor* beta_proj = nn_tensor_create(stk, model, out_planes, 1, 1, 1, TENSOR_REQUIRES_GRAD | TENSOR_AS_PARAM);
+        nn_tensor* beta_proj = nn_tensor_create(ar, model, out_planes, 1, 1, 1, TENSOR_REQUIRES_GRAD | TENSOR_AS_PARAM);
         mat_fill(beta_proj->value, 0.0f);
-        shortcut = nn_func_batchnorm2d(stk, model, conv_proj, gamma_proj, beta_proj, 1e-5f, 0.9f, 0);
+        shortcut = nn_func_batchnorm2d(ar, model, conv_proj, gamma_proj, beta_proj, 1e-5f, 0.9f, 0);
     } else {
         shortcut = input;
     }
 
-    nn_tensor* add = nn_func_add(stk, model, bn2, shortcut, 0);
-    nn_tensor* out = nn_func_relu(stk, model, add, 0);
+    nn_tensor* add = nn_func_add(ar, model, bn2, shortcut, 0);
+    nn_tensor* out = nn_func_relu(ar, model, add, 0);
 
     return out;
 }
 
-nn_tensor *nn_layer_softmax(obs *stk, nn_model *model, nn_tensor *input) {
-    return nn_func_softmax(stk, model, input, TENSOR_AS_OUTPUT);
+nn_tensor *nn_layer_softmax(arena *ar, nn_model *model, nn_tensor *input) {
+    return nn_func_softmax(ar, model, input, TENSOR_AS_OUTPUT);
 }
 
 static void _forward(const _nn_graph* graph, bool is_training) {
@@ -835,8 +835,8 @@ static void _backward(const _nn_graph* graph) { //NOSONAR
     }
 }
 
-nn_model* nn_model_create(obs* stk) {
-    return (nn_model*)obs_alloc(stk, sizeof(nn_model), 1);
+nn_model* nn_model_create(arena* ar) {
+    return (nn_model*)arena_alloc(ar, sizeof(nn_model), 1);
 }
 
 static void __nn_graph_dfs(nn_tensor* node, bool* visited, nn_tensor** graph, size_t* size) {
@@ -854,37 +854,37 @@ static void __nn_graph_dfs(nn_tensor* node, bool* visited, nn_tensor** graph, si
     graph[(*size)++] = node;
 }
 
-static _nn_graph __nn_graph_create(obs* stk, const nn_model* model, nn_tensor* node) {
-    obs_marker scratch = obs_get_marker(&stk, 1);
+static _nn_graph __nn_graph_create(arena* ar, const nn_model* model, nn_tensor* node) {
+    arena_marker scratch = arena_get_marker(&ar, 1);
 
-    bool* visited = (bool*)obs_alloc(scratch.stk, sizeof(bool) * model->tensor_count, 1);
+    bool* visited = (bool*)arena_alloc(scratch.ar, sizeof(bool) * model->tensor_count, 1);
 
-    nn_tensor** graph_tensors = (nn_tensor**)obs_alloc(scratch.stk, sizeof(nn_tensor*) * model->tensor_count, 1);
+    nn_tensor** graph_tensors = (nn_tensor**)arena_alloc(scratch.ar, sizeof(nn_tensor*) * model->tensor_count, 1);
     size_t graph_size = 0;
 
     __nn_graph_dfs(node, visited, graph_tensors, &graph_size);
 
     _nn_graph graph = {
         .tensor_count = graph_size,
-        .tensors = obs_alloc(stk, sizeof(nn_tensor*) * graph_size, 0)
+        .tensors = arena_alloc(ar, sizeof(nn_tensor*) * graph_size, 0)
     };
 
     memcpy(graph.tensors, graph_tensors, sizeof(nn_tensor*) * graph_size);
 
-    obs_drop_marker(scratch);
+    arena_drop_marker(scratch);
     return graph;
 }
 
-void nn_model_compile(obs* stk, nn_model* model) {
+void nn_model_compile(arena* ar, nn_model* model) {
     if (model->output != NULL) {
         model->forward_graph = __nn_graph_create(
-            stk, model, model->output
+            ar, model, model->output
         );
     }
 
     if (model->loss != NULL) {
         model->backward_graph = __nn_graph_create(
-            stk, model, model->loss
+            ar, model, model->loss
         );
     }
 }
@@ -905,7 +905,7 @@ float nn_model_criterion(nn_model* model, matrix* input, matrix* target) {
     return mat_sum(model->loss->value);
 }
 
-matrix* nn_model_predict(obs *stk, nn_model* model, matrix* input) {
+matrix* nn_model_predict(arena *ar, nn_model* model, matrix* input) {
     size_t batch_rows = model->input->value->rows;
     size_t input_rows = input->rows;
     size_t input_cols = input->cols;
@@ -922,9 +922,9 @@ matrix* nn_model_predict(obs *stk, nn_model* model, matrix* input) {
     }
     
     else if (input_rows < batch_rows) {
-        obs_marker scratch = obs_get_marker(&stk, 1);
+        arena_marker scratch = arena_get_marker(&ar, 1);
         
-        matrix* temp_input = mat_create(scratch.stk, batch_rows, input_cols);
+        matrix* temp_input = mat_create(scratch.ar, batch_rows, input_cols);
 
         memcpy(temp_input->data, input->data, input_rows * input_cols * sizeof(float));
 
@@ -938,13 +938,13 @@ matrix* nn_model_predict(obs *stk, nn_model* model, matrix* input) {
 
         size_t out_size = model->output->c * model->output->h * model->output->w;
 
-        output = mat_create(stk, input_rows, out_size);
+        output = mat_create(ar, input_rows, out_size);
         memcpy(
             output->data, model->output->value->data,
             input_rows * out_size * sizeof(float)
         );
 
-        obs_drop_marker(scratch);
+        arena_drop_marker(scratch);
     }
 
     model->input->value->data = checkpoint;

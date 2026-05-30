@@ -6,12 +6,12 @@
 #include <omp.h>
 #include <stdlib.h>
 
-matrix *mat_create(obs *stk, size_t rows, size_t cols) {
-    matrix *mat = (matrix*)obs_alloc(stk, sizeof(matrix), 1);
+matrix *mat_create(arena *ar, size_t rows, size_t cols) {
+    matrix *mat = (matrix*)arena_alloc(ar, sizeof(matrix), 1);
 
     mat->rows = rows;
     mat->cols = cols;
-    mat->data = (float*)obs_alloc(stk, sizeof(float) * rows * cols, 1);
+    mat->data = (float*)arena_alloc(ar, sizeof(float) * rows * cols, 1);
 
     mat_fill(mat, 0.0f);
 
@@ -164,9 +164,9 @@ bool mat_batchnorm2d( //NOSONAR
 
     if (is_training) {
         // 使用项目的内存池（stack）替代 _builtin_alloca，保证多线程下的栈安全
-        obs_marker scratch = obs_get_marker(NULL, 0);
-        float *mean = (float*)obs_alloc(scratch.stk, channels * sizeof(float), 1);
-        float *var = (float*)obs_alloc(scratch.stk, channels * sizeof(float), 1);
+        arena_marker scratch = arena_get_marker(NULL, 0);
+        float *mean = (float*)arena_alloc(scratch.ar, channels * sizeof(float), 1);
+        float *var = (float*)arena_alloc(scratch.ar, channels * sizeof(float), 1);
 
         for (size_t c = 0; c < channels; c++) {
             mean[c] = 0.0f;
@@ -237,7 +237,7 @@ bool mat_batchnorm2d( //NOSONAR
         }
 
         // 释放临时内存，回滚状态
-        obs_drop_marker(scratch);
+        arena_drop_marker(scratch);
     } else {
         #pragma omp parallel for collapse(2)
         for (size_t n = 0; n < batch_size; n++) {
@@ -273,9 +273,9 @@ bool mat_grad_batchnorm2d( //NOSONAR
     float ns = (float)(batch_size * spatial);
 
     // 使用项目的内存池（stack）替代 _builtin_alloca
-    obs_marker scratch = obs_get_marker(NULL, 0);
-    float *sum_dy = (float*)obs_alloc(scratch.stk, channels * sizeof(float), 1);
-    float *sum_dy_x_hat = (float*)obs_alloc(scratch.stk, channels * sizeof(float), 1);
+    arena_marker scratch = arena_get_marker(NULL, 0);
+    float *sum_dy = (float*)arena_alloc(scratch.ar, channels * sizeof(float), 1);
+    float *sum_dy_x_hat = (float*)arena_alloc(scratch.ar, channels * sizeof(float), 1);
 
     for (size_t c = 0; c < channels; c++) {
         sum_dy[c] = 0.0f;
@@ -327,7 +327,7 @@ bool mat_grad_batchnorm2d( //NOSONAR
         }
     }
 
-    obs_drop_marker(scratch);
+    arena_drop_marker(scratch);
 
     return 1;
 }
@@ -387,10 +387,10 @@ bool mat_conv2d( //NOSONAR
 
     #pragma omp parallel for
     for (size_t b = 0; b < batch_size; b++) {
-        obs_marker scratch = obs_get_marker(NULL, 0);
+        arena_marker scratch = arena_get_marker(NULL, 0);
         
-        matrix *col_mat = mat_create(scratch.stk, in_c * k_size * k_size, out_h * out_w);
-        matrix *temp = mat_create(scratch.stk, out_c, out_h * out_w);
+        matrix *col_mat = mat_create(scratch.ar, in_c * k_size * k_size, out_h * out_w);
+        matrix *temp = mat_create(scratch.ar, out_c, out_h * out_w);
 
         matrix input_view = {
             .rows = 1, 
@@ -413,7 +413,7 @@ bool mat_conv2d( //NOSONAR
 
         memcpy(result->data + b * out_stride, temp->data, sizeof(float) * out_stride);
 
-        obs_drop_marker(scratch);
+        arena_drop_marker(scratch);
     }
 
     return 1;
@@ -475,15 +475,15 @@ bool mat_grad_conv2d( //NOSONAR
 
     #pragma omp parallel
     {
-        obs_marker scratch = obs_get_marker(NULL, 0);
+        arena_marker scratch = arena_get_marker(NULL, 0);
 
         matrix *local_grad_kernel = NULL;
         if (kernel_grad) {
-            local_grad_kernel = mat_create(scratch.stk, out_c, k_cols);
+            local_grad_kernel = mat_create(scratch.ar, out_c, k_cols);
         }
 
-        matrix *col_mat = mat_create(scratch.stk, k_cols, out_h * out_w);
-        matrix *grad_col = mat_create(scratch.stk, k_cols, out_h * out_w);
+        matrix *col_mat = mat_create(scratch.ar, k_cols, out_h * out_w);
+        matrix *grad_col = mat_create(scratch.ar, k_cols, out_h * out_w);
 
         #pragma omp for nowait
         for (size_t b = 0; b < batch_size; b++) {
@@ -530,7 +530,7 @@ bool mat_grad_conv2d( //NOSONAR
             }
         }
 
-        obs_drop_marker(scratch);
+        arena_drop_marker(scratch);
     }
 
     return 1;
